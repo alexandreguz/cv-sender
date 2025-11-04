@@ -23,6 +23,65 @@ export default function LinkedinResultsPage() {
   const [selected, setSelected] = useState<Job | null>(null);
   const [isOpen, setIsOpen] = useState(false);
 
+  // Convert requirements text into skills list and create a job in the system,
+  // then trigger CV generation for that job.
+  async function addToDashboard(job: Job) {
+    try {
+      // Extract requirements lines -- split on newlines and bullets
+      const rawReq = job.about_requirements || job.about_responsibilities || job.about_summary || job.about_raw || "";
+      const lines = rawReq
+        .split(/\r?\n|\u2022|\u2023|\-|\*|•/) // split on newlines and common bullet chars
+        .map(s => s.replace(/[\t\u00A0]/g, "").trim())
+        .filter(Boolean);
+
+      // Use each requirement line as an individual skill
+      const skills = Array.from(new Set(lines)).join(", ");
+
+      const payload = {
+        title: job.title ?? "",
+        company: job.company ?? "",
+        source: "linkedin",
+        url: job.url ?? "",
+        status: "new",
+        skills,
+      } as any;
+
+      // create job in backend
+      const r = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) {
+        const txt = await r.text().catch(() => "");
+        throw new Error(`POST /api/jobs failed: ${r.status} ${r.statusText} ${txt}`);
+      }
+      const created = await r.json().catch(() => null);
+
+      // if created contains id, trigger CV generation
+      // created may be the single job object or an array when multiple were inserted
+      const createdJob = Array.isArray(created) ? created[0] : created;
+      if (createdJob && createdJob.id) {
+        const g = await fetch("/api/generate-cv", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jobId: createdJob.id }),
+        });
+        const gj = await g.json();
+        if (gj.cvId) {
+          alert("Job adicionado e CV gerado");
+        } else {
+          alert("Job adicionado, mas erro ao gerar CV");
+        }
+      } else {
+        alert("Erro ao criar job no dashboard");
+      }
+    } catch (err) {
+      console.error("addToDashboard error", err);
+      alert("Erro ao adicionar ao dashboard");
+    }
+  }
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -69,7 +128,8 @@ export default function LinkedinResultsPage() {
                 <th className="p-2 border">Company (snippet)</th>
                 <th className="p-2 border">Summary (snippet)</th>
                 <th className="p-2 border">Requirements (snippet)</th>
-                <th className="p-2 border">Error</th>
+                  <th className="p-2 border">Error</th>
+                  <th className="p-2 border">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -112,6 +172,18 @@ export default function LinkedinResultsPage() {
                     {job.about_requirements ? job.about_requirements.slice(0, 120) + (job.about_requirements.length > 120 ? "..." : "") : "-"}
                   </td>
                   <td className="p-2 border align-top text-red-600">{job.error ?? ""}</td>
+                  <td className="p-2 border align-top">
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        // create job in dashboard and generate CV based on requirements
+                        await addToDashboard(job);
+                      }}
+                      className="px-3 py-1 bg-green-600 text-white rounded text-sm"
+                    >
+                      Adicionar ao dashboard
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

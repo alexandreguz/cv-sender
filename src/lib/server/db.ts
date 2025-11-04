@@ -1,6 +1,9 @@
 // src/lib/server/db.ts
 // simples "banco" em memória para MVP (server-side only)
+// Agora com persistência em arquivo para `keywords` (data/keywords.json)
 import { randomUUID } from "crypto";
+import fs from "fs";
+import path from "path";
 
 type Profile = {
   id: string;
@@ -32,11 +35,43 @@ type CV = {
   pdfBytes: Uint8Array;
   createdAt: string;
 };
-
 const PROFILE: { value: Profile | null } = { value: null };
-const KEYWORDS: { titles: string[]; skills: string[] } = { titles: [], skills: [] };
+// KEYWORDS now persists to data/keywords.json with shape { titles: string[], skills: string[], location?: string }
+const KEYWORDS: { titles: string[]; skills: string[]; location?: string } = { titles: [], skills: [] };
+const KEYWORDS_FILE = path.resolve(process.cwd(), "data", "keywords.json");
+
+// carregar keywords do arquivo (se existir) durante inicialização
+try {
+  if (fs.existsSync(KEYWORDS_FILE)) {
+    const raw = fs.readFileSync(KEYWORDS_FILE, "utf8");
+    const parsed = JSON.parse(raw || "{}");
+    if (parsed && typeof parsed === "object") {
+      if (Array.isArray(parsed.titles)) KEYWORDS.titles = parsed.titles;
+      if (Array.isArray(parsed.skills)) KEYWORDS.skills = parsed.skills;
+      if (typeof parsed.location === "string") KEYWORDS.location = parsed.location;
+    }
+  }
+} catch (e) {
+  // ignore errors reading file on startup
+}
 const JOBS: Map<string, Job> = new Map();
 const CVS: Map<string, CV> = new Map();
+const JOBS_FILE = path.resolve(process.cwd(), "data", "jobs.json");
+
+// Load jobs from file on startup
+try {
+  if (fs.existsSync(JOBS_FILE)) {
+    const raw = fs.readFileSync(JOBS_FILE, "utf8");
+    const arr = JSON.parse(raw || "[]");
+    if (Array.isArray(arr)) {
+      for (const job of arr) {
+        if (job && job.id) JOBS.set(job.id, job);
+      }
+    }
+  }
+} catch (e) {
+  // ignore errors reading jobs file
+}
 
 export function getProfile() {
   return PROFILE.value;
@@ -49,10 +84,31 @@ export function setProfile(p: Partial<Profile>) {
 export function getKeywords() {
   return { ...KEYWORDS };
 }
-export function setKeywords(payload: { titles?: string[]; skills?: string[] }) {
+export function setKeywords(payload: { titles?: string[]; skills?: string[]; location?: string }) {
   if (payload.titles) KEYWORDS.titles = payload.titles;
   if (payload.skills) KEYWORDS.skills = payload.skills;
+  if (typeof payload.location === "string") KEYWORDS.location = payload.location;
+
+  // persistir em arquivo
+  try {
+    const dir = path.resolve(process.cwd(), "data");
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(KEYWORDS_FILE, JSON.stringify(KEYWORDS, null, 2), "utf8");
+  } catch (e) {
+    // non-fatal: keep in-memory state
+  }
+
   return getKeywords();
+}
+
+function persistJobs() {
+  try {
+    const dir = path.resolve(process.cwd(), "data");
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(JOBS_FILE, JSON.stringify(Array.from(JOBS.values()), null, 2), "utf8");
+  } catch (e) {
+    // non-fatal
+  }
 }
 
 export function insertJobs(jobs: Omit<Job, "id" | "createdAt">[]) {
@@ -69,6 +125,7 @@ export function insertJobs(jobs: Omit<Job, "id" | "createdAt">[]) {
     JOBS.set(id, job);
     inserted.push(job);
   }
+  persistJobs();
   return inserted;
 }
 
@@ -81,6 +138,7 @@ export function updateJob(id: string, patch: Partial<Job>) {
   if (!job) return null;
   const updated = { ...job, ...patch };
   JOBS.set(id, updated);
+  persistJobs();
   return updated;
 }
 
@@ -104,4 +162,5 @@ export function clearAllForDev() {
   KEYWORDS.skills = [];
   JOBS.clear();
   CVS.clear();
+  persistJobs();
 }

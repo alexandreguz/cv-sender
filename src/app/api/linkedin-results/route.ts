@@ -30,7 +30,9 @@ export async function GET() {
   try {
     const raw = await fs.readFile(file, "utf8");
     const json = JSON.parse(raw);
-    return new Response(JSON.stringify({ ok: true, file: path.basename(file), data: json }), {
+    // If the file has a 'results' array, return only that
+    const jobs = Array.isArray(json.results) ? json.results : Array.isArray(json) ? json : [];
+    return new Response(JSON.stringify({ ok: true, file: path.basename(file), data: jobs }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });

@@ -22,6 +22,16 @@ export default function Header() {
               </Link>
             </li>
             <li>
+              <Link href="/keywords" className="px-3 py-1 rounded hover:bg-white/5">
+                Keywords
+              </Link>
+            </li>
+            <li>
+              <Link href="/scrapers" className="px-3 py-1 rounded hover:bg-white/5">
+                Scrapers
+              </Link>
+            </li>
+            <li>
               <Link href="/profile" className="px-3 py-1 rounded hover:bg-white/5">
                 Profile
               </Link>

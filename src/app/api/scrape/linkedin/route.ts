@@ -1,256 +1,9 @@
-// // src/app/api/scrape/linkedin/route.ts
-// export const runtime = "nodejs";
-
-// import fs from "fs/promises";
-// import path from "path";
-// import type { NextRequest } from "next/server";
-
-// type Params = { portal?: string };
-
-// const DEFAULT_SEARCH_URL =
-//   "https://www.linkedin.com/jobs/search/?keywords=QA%20Automation&location=Israel&f_TP=1"; // ajuste a query se quiser
-
-// async function ensureDataDir() {
-//   const dir = path.resolve(process.cwd(), "data");
-//   await fs.mkdir(dir, { recursive: true });
-//   return dir;
-// }
-
-// // helper para salvar JSON
-// async function saveJson(filenameBase: string, data: any) {
-//   const dir = await ensureDataDir();
-//   const name = `${filenameBase}-${Date.now()}.json`;
-//   const file = path.join(dir, name);
-//   await fs.writeFile(file, JSON.stringify(data, null, 2), "utf8");
-//   return { file, name, count: Array.isArray(data) ? data.length : 1 };
-// }
-
-// /**
-//  * Extrai requisitos de uma página de vaga do LinkedIn.
-//  * Usa vários seletores possíveis para cobrir variações.
-//  */
-// async function extractRequirementsFromJobPage(page: any, jobUrl: string) {
-//   // seletores plausíveis para "qualifications / requirements / responsibilities"
-//   const requirementSelectors = [
-//     ".description__job-criteria-list", // sometimes used
-//     ".job-criteria__list", // LinkedIn new
-//     ".show-more-less-html__markup", // fallback: job description block
-//     ".job-description__content", // older
-//     ".description__text", // fallback
-//     "section[aria-label='Job description']",
-//   ];
-
-//   // tenta esperar por algum seletor conhecido depois de abrir a vaga
-//   for (const sel of requirementSelectors) {
-//     try {
-//       await page.waitForSelector(sel, { timeout: 3000 });
-//       const raw = await page.$eval(sel, (el: Element) => (el as HTMLElement).innerText || el.textContent || "");
-//       if (raw && raw.trim().length > 10) {
-//         // heurística simples: quebrar por linhas e filtrar curtas
-//         const lines = raw
-//           .split(/\r?\n/)
-//           .map((l) => l.trim())
-//           .filter((l) => l.length > 3);
-//         return { raw, lines };
-//       }
-//     } catch (e) {
-//       // não achou esse seletor — continua tentando outros
-//     }
-//   }
-
-//   // se nada encontrado, tentar coletar o conteúdo completo do body da descrição
-//   try {
-//     const fallback = await page.$eval("body", (b: Element) => ((b as HTMLElement).innerText || "").slice(0, 5000));
-//     return { raw: fallback, lines: fallback.split(/\r?\n/).map((l) => l.trim()).filter(Boolean) };
-//   } catch (e) {
-//     return { raw: "", lines: [] };
-//   }
-// }
-
-// /**
-//  * Faz o scraping específico para LinkedIn: abre searchUrl, clica em cada job-card,
-//  * abre cada vaga em nova aba para extrair requirements e monta uma lista.
-//  */
-// export async function POST(_req: Request, _context: { params?: Params | Promise<Params> }) {
-//   const searchUrl = DEFAULT_SEARCH_URL;
-
-//   // opcional: passar cookie de sessão via env var para evitar bloqueios e ver mais conteúdo
-//   const providedSessionCookie = process.env.LINKEDIN_SESSION_COOKIE; // form: "li_at=XXXX;"
-//   const maxJobs = +(process.env.LINKEDIN_MAX_JOBS || "30"); // limite total
-//   const concurrency = +(process.env.LINKEDIN_CONCURRENCY || "3"); // número de abas concorrentes
-
-//   // dynamic import do playwright (para não falhar no build se não instalado)
-//   try {
-//     const { chromium } = await import("playwright");
-
-//     const browser = await chromium.launch({
-//       headless: true,
-//       args: ["--no-sandbox", "--disable-setuid-sandbox"],
-//     });
-
-//     const context = await browser.newContext({
-//       // tenta reduzir detecção
-//       userAgent:
-//         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
-//       viewport: { width: 1280, height: 800 },
-//     });
-
-//     // se cookie de sessão fornecido, adiciona ao contexto
-//     if (providedSessionCookie) {
-//       // espera cookie no formato "li_at=VAL;"
-//       const match = /li_at=([^;]+)/.exec(providedSessionCookie);
-//       if (match) {
-//         await context.addCookies([
-//           {
-//             name: "li_at",
-//             value: match[1],
-//             domain: ".www.linkedin.com",
-//             path: "/",
-//             httpOnly: true,
-//             secure: true,
-//             sameSite: "Lax",
-//           },
-//         ]);
-//       }
-//     }
-
-//     const page = await context.newPage();
-
-//     // navega até a busca
-//     await page.goto(searchUrl, { waitUntil: "networkidle", timeout: 30000 });
-
-//     // scroll para carregar lazy content
-//     await page.evaluate(async () => {
-//       for (let i = 0; i < 6; i++) {
-//         window.scrollBy(0, window.innerHeight);
-//         // small pause
-//         await new Promise((r) => setTimeout(r, 500));
-//       }
-//     });
-
-//     // selecionadores de cards de vagas no LinkedIn (tentar vários)
-//     const cardSelectors = [
-//       ".jobs-search-results__list-item", // list item container
-//       ".job-card-container", // job card container
-//       ".result-card__contents", // older
-//       ".jobs-search-results__result-item",
-//     ];
-
-//     // pegar links dos cards (elimina duplicatas)
-//     let jobLinks: string[] = [];
-//     for (const cs of cardSelectors) {
-//       try {
-//         const links = await page.$$eval(`${cs} a`, (els: Element[]) =>
-//           els
-//             .map((a) => {
-//               const href = (a as HTMLAnchorElement).href;
-//               return href && href.includes("/jobs/view/") ? href.split("?")[0] : null;
-//             })
-//             .filter(Boolean)
-//         );
-//         jobLinks = jobLinks.concat(links as string[]);
-//       } catch (e) {
-//         // ignora
-//       }
-//       if (jobLinks.length >= maxJobs) break;
-//     }
-
-//     // dedupe e trim
-//     jobLinks = Array.from(new Set(jobLinks)).slice(0, maxJobs);
-
-//     // fallback: se não achou links via cards, tentar anchors gerais
-//     if (jobLinks.length === 0) {
-//       const anchors = await page.$$eval("a[href*='/jobs/view/']", (els: Element[]) =>
-//         els.map((a) => (a as HTMLAnchorElement).href.split("?")[0])
-//       );
-//       jobLinks = Array.from(new Set(anchors)).slice(0, maxJobs);
-//     }
-
-//     // se ainda vazio, erro
-//     if (!jobLinks.length) {
-//       await browser.close();
-//       return new Response(JSON.stringify({ ok: false, error: "No job links found (LinkedIn may be blocking requests)." }), {
-//         status: 500,
-//         headers: { "Content-Type": "application/json" },
-//       });
-//     }
-
-//     // processar links em batches com concorrência
-//     const results: any[] = [];
-//     let idx = 0;
-
-//     async function worker() {
-//       while (true) {
-//         const i = idx++;
-//         if (i >= jobLinks.length) return;
-//         const jobUrl = jobLinks[i];
-//         let jobData: any = { url: jobUrl, index: i };
-
-//         // abrir nova aba por vaga (isolado)
-//         const jobPage = await context.newPage();
-//         try {
-//           await jobPage.goto(jobUrl, { waitUntil: "networkidle", timeout: 20000 });
-//           // coletar título / empresa / local
-//           const title = await jobPage.$eval("h1", (el: Element) => (el.textContent || "").trim()).catch(() => "");
-//           const company = await jobPage.$eval(".topcard__org-name-link, .topcard__flavor a, .topcard__org-name", (el: Element) =>
-//             (el.textContent || "").trim()
-//           ).catch(() => "");
-//           const location = await jobPage.$eval(".topcard__flavor--bullet, .topcard__flavor--metadata, .topcard__flavor", (el: Element) =>
-//             (el.textContent || "").trim()
-//           ).catch(() => "");
-
-//           const { raw, lines } = await extractRequirementsFromJobPage(jobPage, jobUrl);
-
-//           jobData = {
-//             url: jobUrl,
-//             title: title || null,
-//             company: company || null,
-//             location: location || null,
-//             requirements_raw: raw,
-//             requirements_lines: lines,
-//           };
-
-//           // pequena espera entre requisições para reduzir chance de bloqueio
-//           await new Promise((r) => setTimeout(r, 400 + Math.random() * 400));
-//         } catch (err: any) {
-//           jobData.error = String(err?.message || err);
-//         } finally {
-//           try {
-//             await jobPage.close();
-//           } catch {}
-//         }
-//         results.push(jobData);
-//       }
-//     }
-
-//     // lançar workers
-//     const workers = [];
-//     for (let k = 0; k < Math.min(concurrency, jobLinks.length); k++) workers.push(worker());
-//     await Promise.all(workers);
-
-//     await browser.close();
-
-//     // salvar resultado em arquivo JSON
-//     const saved = await saveJson("linkedin-jobs", results);
-
-//     return new Response(JSON.stringify({ ok: true, portal: "linkedin", ...saved }), {
-//       status: 200,
-//       headers: { "Content-Type": "application/json" },
-//     });
-//   } catch (err: any) {
-//     return new Response(JSON.stringify({ ok: false, error: String(err?.message || err) }), {
-//       status: 500,
-//       headers: { "Content-Type": "application/json" },
-//     });
-//   }
-// }
-
-
 // src/app/api/scrape/linkedin/route.ts
 export const runtime = "nodejs";
 
 import fs from "fs/promises";
 import path from "path";
+import { getKeywords } from "@/lib/server/db";
 
 type Params = { portal?: string };
 
@@ -312,7 +65,18 @@ async function extractJobInfo(page: any) {
 }
 
 export async function POST(_req: Request, _context: { params?: Params | Promise<Params> }) {
-  const searchUrl = DEFAULT_SEARCH_URL;
+  // O scraper deve procurar apenas com base nos dados em `keywords` (persistidos).
+  // Lemos o conjunto de titles (KEYWORDS.titles) e opcional location do armazenamento.
+  const kw = getKeywords();
+  const titles: string[] = Array.isArray(kw.titles) ? kw.titles.filter(Boolean) : [];
+  const location = typeof kw.location === "string" && kw.location.trim() ? kw.location.trim() : "";
+
+  if (!titles || titles.length === 0) {
+    return new Response(JSON.stringify({ ok: false, error: "Nenhuma keyword configurada. Use /api/keywords para adicionar titles." }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   const sessionCookie = process.env.LINKEDIN_SESSION_COOKIE; // opcional
   const maxJobs = +(process.env.LINKEDIN_MAX_JOBS || "30");
@@ -347,20 +111,41 @@ export async function POST(_req: Request, _context: { params?: Params | Promise<
     }
 
     const page = await context.newPage();
-    await page.goto(searchUrl, { waitUntil: "networkidle", timeout: 30000 });
 
-    // scroll down para carregar mais vagas
-    await page.evaluate(async () => {
-      for (let i = 0; i < 8; i++) {
-        window.scrollBy(0, window.innerHeight);
-        await new Promise((r) => setTimeout(r, 800));
+    // Executa uma busca para cada título configurado até atingir maxJobs
+    let jobLinks: string[] = [];
+    const searchUrlsUsed: string[] = [];
+
+    for (const title of titles) {
+      if (jobLinks.length >= maxJobs) break;
+      const s = `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(title)}${
+        location ? `&location=${encodeURIComponent(location)}` : ""
+      }`;
+      searchUrlsUsed.push(s);
+      try {
+        await page.goto(s, { waitUntil: "networkidle", timeout: 30000 });
+
+        // scroll para carregar conteúdo
+        await page.evaluate(async () => {
+          for (let i = 0; i < 6; i++) {
+            window.scrollBy(0, window.innerHeight);
+            await new Promise((r) => setTimeout(r, 600));
+          }
+        });
+
+        const links = await page.$$eval("a[href*='/jobs/view/']", (els: Element[]) =>
+          Array.from(new Set(els.map((a) => (a as HTMLAnchorElement).href.split("?")[0])))
+        );
+        for (const l of links) {
+          if (jobLinks.length >= maxJobs) break;
+          if (!jobLinks.includes(l)) jobLinks.push(l);
+        }
+      } catch (e) {
+        // ignora erros de uma busca específica e continua com próximas keywords
+        continue;
       }
-    });
+    }
 
-    // coleta links das vagas
-    let jobLinks = await page.$$eval("a[href*='/jobs/view/']", (els: Element[]) =>
-      Array.from(new Set(els.map((a) => (a as HTMLAnchorElement).href.split("?")[0]))).slice(0, 60)
-    );
     jobLinks = jobLinks.slice(0, maxJobs);
 
     if (!jobLinks.length) {
@@ -498,12 +283,22 @@ export async function POST(_req: Request, _context: { params?: Params | Promise<
 
     await browser.close();
 
-    const saved = await saveJson("linkedin-about-jobs", results);
+    // salvar também os parâmetros de busca junto com os resultados
+    const payloadToSave = {
+      search: { titles, location, searchUrls: searchUrlsUsed },
+      results,
+    };
 
-    return new Response(JSON.stringify({ ok: true, portal: "linkedin", ...saved }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    const saved = await saveJson("linkedin-about-jobs", payloadToSave);
+
+    // Retorna metadados do arquivo salvo e os resultados diretamente no corpo
+    return new Response(
+      JSON.stringify({ ok: true, portal: "linkedin", ...saved, results }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   } catch (err: any) {
     return new Response(JSON.stringify({ ok: false, error: String(err?.message || err) }), {
       status: 500,
