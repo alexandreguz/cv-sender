@@ -34,10 +34,10 @@ export default function ScrapersPage() {
 
   async function fetchLinkedInResults() {
     try {
-      const r = await fetch("/api/linkedin-results");
+      const r = await fetch("/api/scrape/results?portal=linkedin");
       const j = await r.json();
       if (j.ok && Array.isArray(j.data)) {
-        // Filter out jobs with timeout errors or incomplete data
+        // Filter out jobs with timeout errors
         const filteredJobs = j.data.filter((job: Job) => {
           // Remove jobs with timeout errors
           if (job.error?.includes("Timeout") || job.error?.includes("timeout")) {

@@ -17,11 +17,6 @@ export default function Header() {
               </Link>
             </li>
             <li>
-              <Link href="/linkedin-results" className="px-3 py-1 rounded hover:bg-white/5">
-                LinkedIn Results
-              </Link>
-            </li>
-            <li>
               <Link href="/keywords" className="px-3 py-1 rounded hover:bg-white/5">
                 Keywords
               </Link>
