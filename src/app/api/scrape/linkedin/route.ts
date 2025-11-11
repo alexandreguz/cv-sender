@@ -3,12 +3,11 @@ export const runtime = "nodejs";
 
 import fs from "fs/promises";
 import path from "path";
-import { getKeywords } from "@/lib/server/db";
+import { getKeywords, setKeywords } from "@/lib/server/db";
 
 type Params = { portal?: string };
 
-const DEFAULT_SEARCH_URL =
-  "https://www.linkedin.com/jobs/search/?keywords=QA%20Automation&location=Israel";
+
 
 /** Cria diretório data e salva JSON */
 async function saveJson(filenameBase: string, data: any) {
@@ -23,19 +22,19 @@ async function saveJson(filenameBase: string, data: any) {
 /** Extrai a seção "About the job" e campos relacionados */
 async function extractAboutTheJob(page: any) {
   const sections = [
-    "section[aria-label='About the job']",
-    "section[data-test-job-description-section]",
+    "#job-details",
     ".show-more-less-html__markup",
-    ".description__text",
-    ".job-description__content",
+    ".jobs-description__content",
+    'jobs-box__html-content',
+    '.jobs-description__container'
   ];
 
   for (const selector of sections) {
+    const locator = page.locator(selector).first();
     try {
-      await page.waitForSelector(selector, { timeout: 3000 });
-      const raw = await page.$eval(selector, (el: Element) => (el as HTMLElement).innerText || "");
+      await locator.waitFor({ timeout: 3000 });
+      const raw = await locator.evaluate((el: HTMLElement) => el.innerText || "");
       if (raw && raw.length > 30) {
-        // limpeza básica
         const clean = raw.replace(/\n{3,}/g, "\n\n").trim();
         return clean;
       }
@@ -48,8 +47,18 @@ async function extractAboutTheJob(page: any) {
 
 /** Extrai informações gerais da vaga */
 async function extractJobInfo(page: any) {
-  const safeText = async (sel: string) =>
-    (await page.$eval(sel, (el: Element) => el.textContent?.trim() || "").catch(() => "")) || "";
+  const safeText = async (sel: string) => {
+    const locator = page.locator(sel).first();
+    try {
+      await locator.waitFor({ timeout: 1500 });
+      return (
+        (await locator.evaluate((el: HTMLElement) => el.textContent?.trim() || "")) ||
+        ""
+      );
+    } catch {
+      return "";
+    }
+  };
 
   const title = await safeText("h1.top-card-layout__title, h1");
   const company = await safeText(".topcard__org-name-link, .top-card-layout__entity-info a, .topcard__org-name");
@@ -64,12 +73,35 @@ async function extractJobInfo(page: any) {
   return { title, company, location, datePosted, jobType, seniority, industries };
 }
 
-export async function POST(_req: Request, _context: { params?: Params | Promise<Params> }) {
-  // O scraper deve procurar apenas com base nos dados em `keywords` (persistidos).
-  // Lemos o conjunto de titles (KEYWORDS.titles) e opcional location do armazenamento.
+export async function POST(req: Request, _context: { params?: Params | Promise<Params> }) {
+  // Permite sobrescrever keywords/location via payload e persiste para futuros scrapes.
+  const body = await req.json().catch(() => ({}));
+  const bodyKeywords = Array.isArray(body?.keywords)
+    ? body.keywords
+    : typeof body?.keywords === "string"
+      ? body.keywords.split(/[,;\n]/).map((s: string) => s.trim()).filter(Boolean)
+      : [];
+  const bodyLocation =
+    typeof body?.location === "string" && body.location.trim() ? body.location.trim() : "";
+
   const kw = getKeywords();
-  const titles: string[] = Array.isArray(kw.titles) ? kw.titles.filter(Boolean) : [];
-  const location = typeof kw.location === "string" && kw.location.trim() ? kw.location.trim() : "";
+
+  const titles: string[] =
+    bodyKeywords.length > 0
+      ? bodyKeywords
+      : Array.isArray(kw.titles)
+        ? kw.titles.filter(Boolean)
+        : [];
+  const location =
+    bodyLocation ||
+    (typeof kw.location === "string" && kw.location.trim() ? kw.location.trim() : "");
+
+  if (bodyKeywords.length > 0 || bodyLocation) {
+    // Atualiza armazenamento com os novos parâmetros para manter consistência com /api/keywords.
+    const currentSkills = Array.isArray(kw.skills) ? kw.skills.filter(Boolean) : [];
+    const uniqueTitles = Array.from(new Set(titles));
+    setKeywords({ titles: uniqueTitles, skills: currentSkills, location });
+  }
 
   if (!titles || titles.length === 0) {
     return new Response(JSON.stringify({ ok: false, error: "Nenhuma keyword configurada. Use /api/keywords para adicionar titles." }), {
@@ -133,9 +165,18 @@ export async function POST(_req: Request, _context: { params?: Params | Promise<
           }
         });
 
-        const links = await page.$$eval("a[href*='/jobs/view/']", (els: Element[]) =>
-          Array.from(new Set(els.map((a) => (a as HTMLAnchorElement).href.split("?")[0])))
-        );
+        const links = await page
+          .locator("a[href*='/jobs/view/']")
+          .evaluateAll((els) =>
+            Array.from(
+              new Set(
+                els
+                  .map((a) => (a as HTMLAnchorElement).href)
+                  .filter(Boolean)
+                  .map((href) => href.split("?")[0])
+              )
+            )
+          );
         for (const l of links) {
           if (jobLinks.length >= maxJobs) break;
           if (!jobLinks.includes(l)) jobLinks.push(l);

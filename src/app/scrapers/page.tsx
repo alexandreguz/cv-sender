@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import LinkedinSearchForm from "../../components/LinkedinSearchForm";
 
 type Job = {
@@ -26,13 +26,7 @@ export default function ScrapersPage() {
   const [selected, setSelected] = useState<Job | null>(null);
   const [isOpen, setIsOpen] = useState(false);
 
-  useEffect(() => {
-    if (selectedPortal === "linkedin") {
-      fetchLinkedInResults();
-    }
-  }, [selectedPortal]);
-
-  async function fetchLinkedInResults() {
+  const fetchLinkedInResults = useCallback(async () => {
     try {
       const r = await fetch("/api/scrape/results?portal=linkedin");
       const j = await r.json();
@@ -77,7 +71,13 @@ export default function ScrapersPage() {
       setJobs([]);
       setFileName(null);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (selectedPortal === "linkedin") {
+      fetchLinkedInResults();
+    }
+  }, [selectedPortal, fetchLinkedInResults]);
 
   async function addToDashboard(job: Job) {
     try {
@@ -163,7 +163,7 @@ export default function ScrapersPage() {
       {selectedPortal === "linkedin" && (
         <>
           <section className="mb-6">
-            <LinkedinSearchForm />
+            <LinkedinSearchForm onScrapeFinished={fetchLinkedInResults} />
           </section>
 
           <section className="mb-6">

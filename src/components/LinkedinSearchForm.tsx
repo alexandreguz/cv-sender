@@ -2,20 +2,24 @@
 
 import React, { useState } from "react";
 
-export default function LinkedinSearchForm() {
+type LinkedinSearchFormProps = {
+  onScrapeFinished?: () => Promise<void> | void;
+};
+
+export default function LinkedinSearchForm({ onScrapeFinished }: LinkedinSearchFormProps) {
   const [keywords, setKeywords] = useState("QA Automation");
   const [location, setLocation] = useState("Israel");
   const [loading, setLoading] = useState(false);
-  const [results, setResults] = useState<any[] | null>(null);
   const [savedFile, setSavedFile] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    setResults(null);
     setSavedFile(null);
+    setSuccess(null);
 
     try {
       const res = await fetch("/api/scrape/linkedin", {
@@ -28,7 +32,10 @@ export default function LinkedinSearchForm() {
         setError(json?.error || "Erro ao executar o scraper");
       } else {
         setSavedFile(json?.name || null);
-        setResults(Array.isArray(json?.results) ? json.results : []);
+        setSuccess("Busca concluída. Os resultados estão atualizados na tabela.");
+        if (typeof onScrapeFinished === "function") {
+          await onScrapeFinished();
+        }
       }
     } catch (err: any) {
       setError(String(err?.message || err));
@@ -82,31 +89,10 @@ export default function LinkedinSearchForm() {
 
       {error && <div className="mt-3 text-red-600">{error}</div>}
 
+      {success && <div className="mt-3 text-green-600">{success}</div>}
+
       {savedFile && (
         <div className="mt-3 text-sm text-gray-700">Arquivo salvo: <strong>{savedFile}</strong> (pasta /data)</div>
-      )}
-
-      {results && (
-        <div className="mt-4">
-          <h3 className="font-medium">Resultados ({results.length})</h3>
-          <ul className="mt-2 space-y-2">
-            {results.map((r: any, i: number) => (
-              <li key={i} className="p-3 border rounded">
-                <div className="font-semibold">{r.title || "(sem título)"}</div>
-                <div className="text-sm text-gray-600">{r.company || "(sem empresa)"} — {r.location || "(sem local)"}</div>
-                <div className="mt-2 text-xs text-blue-600">
-                  <a href={r.url} target="_blank" rel="noreferrer">Abrir vaga</a>
-                </div>
-                {r.about_requirements && (
-                  <details className="mt-2 text-sm text-gray-700">
-                    <summary className="cursor-pointer">Requisitos (abrir)</summary>
-                    <div className="whitespace-pre-wrap mt-2">{r.about_requirements}</div>
-                  </details>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
       )}
     </section>
   );
