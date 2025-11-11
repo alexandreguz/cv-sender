@@ -18,6 +18,8 @@ type Job = {
 export default function DashboardPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
+  const [jobPendingRemoval, setJobPendingRemoval] = useState<Job | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   useEffect(() => {
     fetchJobs();
@@ -75,6 +77,31 @@ export default function DashboardPage() {
     }
   }
 
+  function promptRemoval(job: Job) {
+    setJobPendingRemoval(job);
+  }
+
+  function cancelRemoval() {
+    setJobPendingRemoval(null);
+    setRemoving(false);
+  }
+
+  async function removeJob(jobId: string) {
+    setRemoving(true);
+    try {
+      await fetch("/api/jobs", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: jobId }),
+      });
+      setJobs((prev) => prev.filter((job) => job.id !== jobId));
+      cancelRemoval();
+    } catch (err) {
+      console.error("removeJob error", err);
+      setRemoving(false);
+    }
+  }
+
   return (
     <main className="p-6 max-w-5xl mx-auto">
       <h1 className="text-3xl font-bold mb-4">cv-sender — Dashboard</h1>
@@ -114,7 +141,7 @@ export default function DashboardPage() {
                       <div className="flex gap-2 flex-nowrap">
                         <button onClick={() => generateCv(job.id)} className="px-2 py-1 bg-green-600 text-white rounded">Gen CV</button>
                         <button onClick={() => updateStatus(job.id, "sent")} className="px-2 py-1 bg-blue-600 text-white rounded">Mark Sent</button>
-                        <button onClick={() => updateStatus(job.id, "rejected")} className="px-2 py-1 border rounded">Reject</button>
+                        <button onClick={() => promptRemoval(job)} className="px-2 py-1 border rounded">Reject</button>
                         <a href={job.url} target="_blank" rel="noreferrer" className="px-2 py-1 border rounded">Open</a>
                       </div>
                     </td>
@@ -128,6 +155,35 @@ export default function DashboardPage() {
           </div>
         )}
       </section>
+      {jobPendingRemoval && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={cancelRemoval} />
+          <div className="relative bg-white rounded shadow-lg max-w-md w-full mx-4 p-6">
+            <h2 className="text-xl font-semibold mb-3">Confirmar exclusão</h2>
+            <p className="text-sm text-gray-600">
+              Tem certeza que deseja remover a vaga{" "}
+              <span className="font-semibold">{jobPendingRemoval.title}</span> da empresa{" "}
+              <span className="font-semibold">{jobPendingRemoval.company}</span>? Esta ação não poderá ser desfeita.
+            </p>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                onClick={cancelRemoval}
+                className="px-4 py-2 border rounded"
+                disabled={removing}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => removeJob(jobPendingRemoval.id)}
+                className="px-4 py-2 bg-red-600 text-white rounded disabled:opacity-60"
+                disabled={removing}
+              >
+                {removing ? "Removendo..." : "Remover"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

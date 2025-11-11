@@ -142,6 +142,12 @@ export function updateJob(id: string, patch: Partial<Job>) {
   return updated;
 }
 
+export function deleteJob(id: string) {
+  const existed = JOBS.delete(id);
+  if (existed) persistJobs();
+  return existed;
+}
+
 export function storeCV(jobId: string, profileId: string | null, pdfBytes: Uint8Array) {
   const id = randomUUID();
   const cv: CV = { id, jobId, profileId, pdfBytes, createdAt: new Date().toISOString() };

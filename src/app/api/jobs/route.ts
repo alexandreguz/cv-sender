@@ -1,6 +1,6 @@
 // src/app/api/jobs/route.ts
 import { NextResponse } from "next/server";
-import { listJobs, updateJob, insertJobs } from "@/lib/server/db";
+import { listJobs, updateJob, insertJobs, deleteJob } from "@/lib/server/db";
 
 export async function GET() {
   const jobs = listJobs();
@@ -28,4 +28,32 @@ export async function POST(req: Request) {
     console.error("/api/jobs POST error", err);
     return NextResponse.json({ error: "invalid request" }, { status: 400 });
   }
+}
+
+export async function DELETE(req: Request) {
+  let id: string | null = null;
+  try {
+    const body = await req.json().catch(() => null);
+    if (body && typeof body.id === "string") {
+      id = body.id;
+    }
+  } catch {
+    // ignore body parse errors
+  }
+
+  if (!id) {
+    const { searchParams } = new URL(req.url);
+    id = searchParams.get("id");
+  }
+
+  if (!id) {
+    return NextResponse.json({ error: "id required" }, { status: 400 });
+  }
+
+  const removed = deleteJob(id);
+  if (!removed) {
+    return NextResponse.json({ error: "job not found" }, { status: 404 });
+  }
+
+  return NextResponse.json({ message: "deleted", id });
 }
