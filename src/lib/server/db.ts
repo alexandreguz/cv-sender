@@ -1,19 +1,203 @@
 // src/lib/server/db.ts
-// simples "banco" em memória para MVP (server-side only)
-// Agora com persistência em arquivo para `keywords` (data/keywords.json)
+// Server-side in-memory store with JSON file persistence.
+// All entities are loaded from disk on startup and written back on every mutation.
+// This file is the single source of truth for all data in the app.
 import { randomUUID } from "crypto";
 import fs from "fs";
 import path from "path";
 
-type Profile = {
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const DATA_DIR = path.resolve(process.cwd(), "data");
+
+/** Creates the data/ directory if it does not exist yet. */
+function ensureDataDir() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+/** Reads and parses a JSON file from disk. Returns fallback if missing or corrupt. */
+function readJson<T>(file: string, fallback: T): T {
+  try {
+    if (fs.existsSync(file)) {
+      const raw = fs.readFileSync(file, "utf8");
+      return JSON.parse(raw || JSON.stringify(fallback));
+    }
+  } catch {
+    // ignore parse errors and return the safe fallback
+  }
+  return fallback;
+}
+
+/** Serialises data to JSON and writes it to disk. Non-fatal on failure. */
+function writeJson(file: string, data: unknown) {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(file, JSON.stringify(data, null, 2), "utf8");
+  } catch {
+    // keep in-memory state intact even if the write fails
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Profile — personal base data
+// ---------------------------------------------------------------------------
+
+/** A single entry in the structured work history list. */
+export type Experience = {
   id: string;
-  name?: string;
-  email?: string;
-  position?: string;
-  skills?: string;
-  experience?: string;
-  education?: string;
+  company: string;
+  position: string;
+  startDate: string;  // free-text, e.g. "Jan 2022" or "2022-01"
+  endDate: string;    // empty string when isCurrent is true
+  isCurrent: boolean;
+  description: string;
 };
+
+export type Profile = {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string;
+  location?: string;
+  linkedin?: string;
+  github?: string;
+  /** Generic professional summary used as a base for all CV profiles */
+  summary?: string;
+  /** Comma-separated base skill pool, adapted per CV profile */
+  skills?: string;
+  /** Structured work history — replaces the old free-text experience field */
+  experiences?: Experience[];
+  education?: string;
+  updatedAt: string;
+};
+
+const PROFILE_FILE = path.join(DATA_DIR, "profile.json");
+
+// Load profile from disk once at module startup
+let PROFILE: Profile | null = readJson<Profile | null>(PROFILE_FILE, null);
+
+/** Returns the stored base profile, or null if none has been saved yet. */
+export function getProfile(): Profile | null {
+  return PROFILE;
+}
+
+/** Merges patch into the current profile and persists the result to disk. */
+export function setProfile(patch: Partial<Omit<Profile, "id">>): Profile {
+  const now = new Date().toISOString();
+  PROFILE = {
+    ...(PROFILE ?? { id: randomUUID(), name: "", email: "" }),
+    ...patch,
+    updatedAt: now,
+  };
+  writeJson(PROFILE_FILE, PROFILE);
+  return PROFILE;
+}
+
+// ---------------------------------------------------------------------------
+// CvProfile — per-job-type resume profile
+// ---------------------------------------------------------------------------
+
+export type CvProfile = {
+  id: string;
+  title: string;
+  /** Tailored objective / summary for this job type */
+  summary?: string;
+  /** Technical skills specific to this profile */
+  skills: string[];
+  /** Keywords used to search for jobs of this type */
+  search_keywords: string[];
+  /** Platforms where this profile is used: LinkedIn, AllJobs, Jobmaster */
+  platforms: string[];
+  is_active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const CV_PROFILES_FILE = path.join(DATA_DIR, "cv-profiles.json");
+
+// Load all CV profiles from disk once at module startup
+const CV_PROFILES: Map<string, CvProfile> = new Map(
+  readJson<CvProfile[]>(CV_PROFILES_FILE, []).map((p) => [p.id, p])
+);
+
+/** Serialises the entire CV profiles map to disk. */
+function persistCvProfiles() {
+  writeJson(CV_PROFILES_FILE, Array.from(CV_PROFILES.values()));
+}
+
+/** Returns all CV profiles sorted by creation date descending (newest first). */
+export function listCvProfiles(): CvProfile[] {
+  return Array.from(CV_PROFILES.values()).sort(
+    (a, b) => (a.createdAt < b.createdAt ? 1 : -1)
+  );
+}
+
+/** Returns a single CV profile by id, or null if not found. */
+export function getCvProfile(id: string): CvProfile | null {
+  return CV_PROFILES.get(id) ?? null;
+}
+
+/** Creates a new CV profile, assigns id + timestamps, and persists to disk. */
+export function createCvProfile(
+  data: Omit<CvProfile, "id" | "createdAt" | "updatedAt">
+): CvProfile {
+  const now = new Date().toISOString();
+  const profile: CvProfile = { ...data, id: randomUUID(), createdAt: now, updatedAt: now };
+  CV_PROFILES.set(profile.id, profile);
+  persistCvProfiles();
+  return profile;
+}
+
+/** Applies a partial patch to an existing CV profile and persists. Returns null if not found. */
+export function updateCvProfile(
+  id: string,
+  patch: Partial<Omit<CvProfile, "id" | "createdAt">>
+): CvProfile | null {
+  const existing = CV_PROFILES.get(id);
+  if (!existing) return null;
+  const updated: CvProfile = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+  CV_PROFILES.set(id, updated);
+  persistCvProfiles();
+  return updated;
+}
+
+/** Removes a CV profile by id. Returns true if it existed, false otherwise. */
+export function deleteCvProfile(id: string): boolean {
+  const existed = CV_PROFILES.delete(id);
+  if (existed) persistCvProfiles();
+  return existed;
+}
+
+// ---------------------------------------------------------------------------
+// Keywords — job search terms shared across scrapers
+// ---------------------------------------------------------------------------
+
+export type Keywords = { titles: string[]; skills: string[]; location?: string };
+
+const KEYWORDS_FILE = path.join(DATA_DIR, "keywords.json");
+
+// Load keywords from disk once at module startup
+const KEYWORDS: Keywords = readJson<Keywords>(KEYWORDS_FILE, { titles: [], skills: [] });
+
+/** Returns a shallow copy of the current keyword configuration. */
+export function getKeywords(): Keywords {
+  return { ...KEYWORDS };
+}
+
+/** Merges new keyword values and persists the updated configuration to disk. */
+export function setKeywords(payload: Partial<Keywords>): Keywords {
+  if (payload.titles) KEYWORDS.titles = payload.titles;
+  if (payload.skills) KEYWORDS.skills = payload.skills;
+  if (typeof payload.location === "string") KEYWORDS.location = payload.location;
+  writeJson(KEYWORDS_FILE, KEYWORDS);
+  return getKeywords();
+}
+
+// ---------------------------------------------------------------------------
+// Job — a job listing fetched from a scraper
+// ---------------------------------------------------------------------------
 
 export type Job = {
   id: string;
@@ -23,105 +207,31 @@ export type Job = {
   description?: string;
   source: string;
   url?: string;
-  status: "new" | "ready" | "sent" | "rejected" | "in_process";
-  cvId?: string | null; // id do CV gerado, se houver
+  /** Tracks where the application stands in the hiring funnel */
+  status: "new" | "ready" | "sent" | "viewed" | "interview" | "rejected" | "no_response";
+  /** ID of the generated CV, null if no CV has been created yet */
+  cvId?: string | null;
   createdAt: string;
 };
 
-type CV = {
-  id: string;
-  jobId: string;
-  profileId: string | null;
-  pdfBytes: Uint8Array;
-  createdAt: string;
-};
-const PROFILE: { value: Profile | null } = { value: null };
-// KEYWORDS now persists to data/keywords.json with shape { titles: string[], skills: string[], location?: string }
-const KEYWORDS: { titles: string[]; skills: string[]; location?: string } = { titles: [], skills: [] };
-const KEYWORDS_FILE = path.resolve(process.cwd(), "data", "keywords.json");
+const JOBS_FILE = path.join(DATA_DIR, "jobs.json");
 
-// carregar keywords do arquivo (se existir) durante inicialização
-try {
-  if (fs.existsSync(KEYWORDS_FILE)) {
-    const raw = fs.readFileSync(KEYWORDS_FILE, "utf8");
-    const parsed = JSON.parse(raw || "{}");
-    if (parsed && typeof parsed === "object") {
-      if (Array.isArray(parsed.titles)) KEYWORDS.titles = parsed.titles;
-      if (Array.isArray(parsed.skills)) KEYWORDS.skills = parsed.skills;
-      if (typeof parsed.location === "string") KEYWORDS.location = parsed.location;
-    }
-  }
-} catch (e) {
-  // ignore errors reading file on startup
-}
-const JOBS: Map<string, Job> = new Map();
-const CVS: Map<string, CV> = new Map();
-const JOBS_FILE = path.resolve(process.cwd(), "data", "jobs.json");
+// Load jobs from disk once at module startup
+const JOBS: Map<string, Job> = new Map(
+  readJson<Job[]>(JOBS_FILE, []).map((j) => [j.id, j])
+);
 
-// Load jobs from file on startup
-try {
-  if (fs.existsSync(JOBS_FILE)) {
-    const raw = fs.readFileSync(JOBS_FILE, "utf8");
-    const arr = JSON.parse(raw || "[]");
-    if (Array.isArray(arr)) {
-      for (const job of arr) {
-        if (job && job.id) JOBS.set(job.id, job);
-      }
-    }
-  }
-} catch (e) {
-  // ignore errors reading jobs file
-}
-
-export function getProfile() {
-  return PROFILE.value;
-}
-export function setProfile(p: Partial<Profile>) {
-  const id = PROFILE.value?.id ?? randomUUID();
-  PROFILE.value = { ...(PROFILE.value ?? { id }), ...p };
-  return PROFILE.value;
-}
-export function getKeywords() {
-  return { ...KEYWORDS };
-}
-export function setKeywords(payload: { titles?: string[]; skills?: string[]; location?: string }) {
-  if (payload.titles) KEYWORDS.titles = payload.titles;
-  if (payload.skills) KEYWORDS.skills = payload.skills;
-  if (typeof payload.location === "string") KEYWORDS.location = payload.location;
-
-  // persistir em arquivo
-  try {
-    const dir = path.resolve(process.cwd(), "data");
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(KEYWORDS_FILE, JSON.stringify(KEYWORDS, null, 2), "utf8");
-  } catch (e) {
-    // non-fatal: keep in-memory state
-  }
-
-  return getKeywords();
-}
-
+/** Serialises the entire jobs map to disk. */
 function persistJobs() {
-  try {
-    const dir = path.resolve(process.cwd(), "data");
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(JOBS_FILE, JSON.stringify(Array.from(JOBS.values()), null, 2), "utf8");
-  } catch (e) {
-    // non-fatal
-  }
+  writeJson(JOBS_FILE, Array.from(JOBS.values()));
 }
 
-export function insertJobs(jobs: Omit<Job, "id" | "createdAt">[]) {
+/** Inserts one or more jobs, assigning ids and timestamps, then persists. */
+export function insertJobs(jobs: Omit<Job, "id" | "createdAt">[]): Job[] {
   const inserted: Job[] = [];
   for (const j of jobs) {
     const id = randomUUID();
-    const job: Job = {
-      id,
-      ...j,
-      status: j.status ?? "new",
-      cvId: null,
-      createdAt: new Date().toISOString(),
-    };
+    const job: Job = { ...j, id, status: j.status ?? "new", cvId: null, createdAt: new Date().toISOString() };
     JOBS.set(id, job);
     inserted.push(job);
   }
@@ -129,11 +239,13 @@ export function insertJobs(jobs: Omit<Job, "id" | "createdAt">[]) {
   return inserted;
 }
 
-export function listJobs() {
+/** Returns all jobs sorted by creation date descending (newest first). */
+export function listJobs(): Job[] {
   return Array.from(JOBS.values()).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
-export function updateJob(id: string, patch: Partial<Job>) {
+/** Applies a partial patch to an existing job and persists. Returns null if not found. */
+export function updateJob(id: string, patch: Partial<Job>): Job | null {
   const job = JOBS.get(id);
   if (!job) return null;
   const updated = { ...job, ...patch };
@@ -142,31 +254,56 @@ export function updateJob(id: string, patch: Partial<Job>) {
   return updated;
 }
 
-export function deleteJob(id: string) {
+/** Removes a job by id and persists. Returns true if the job existed. */
+export function deleteJob(id: string): boolean {
   const existed = JOBS.delete(id);
   if (existed) persistJobs();
   return existed;
 }
 
-export function storeCV(jobId: string, profileId: string | null, pdfBytes: Uint8Array) {
+// ---------------------------------------------------------------------------
+// CV — generated PDF bytes (in-memory only; lost on server restart)
+// ---------------------------------------------------------------------------
+
+type CV = {
+  id: string;
+  jobId: string;
+  profileId: string | null;
+  pdfBytes: Uint8Array;
+  createdAt: string;
+};
+
+// CVs live only in RAM — persisting large binary blobs to JSON is impractical.
+const CVS: Map<string, CV> = new Map();
+
+/** Stores generated PDF bytes in memory and links the CV id back to the job record. */
+export function storeCV(jobId: string, profileId: string | null, pdfBytes: Uint8Array): string {
   const id = randomUUID();
-  const cv: CV = { id, jobId, profileId, pdfBytes, createdAt: new Date().toISOString() };
-  CVS.set(id, cv);
-  // link CV ID into job
+  CVS.set(id, { id, jobId, profileId, pdfBytes, createdAt: new Date().toISOString() });
+  // Keep the job's cvId in sync so the dashboard can show a download link
   const job = JOBS.get(jobId);
   if (job) job.cvId = id;
   return id;
 }
 
-export function getCV(id: string) {
+/** Retrieves a stored CV by id, or null if it does not exist (or server was restarted). */
+export function getCV(id: string): CV | null {
   return CVS.get(id) ?? null;
 }
 
+// ---------------------------------------------------------------------------
+// Dev utilities
+// ---------------------------------------------------------------------------
+
+/** Wipes all in-memory data and flushes empty JSON files to disk. Useful for testing. */
 export function clearAllForDev() {
-  PROFILE.value = null;
+  PROFILE = null;
   KEYWORDS.titles = [];
   KEYWORDS.skills = [];
+  delete KEYWORDS.location;
   JOBS.clear();
   CVS.clear();
+  CV_PROFILES.clear();
   persistJobs();
+  persistCvProfiles();
 }

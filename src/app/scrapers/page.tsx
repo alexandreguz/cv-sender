@@ -19,9 +19,7 @@ type Job = {
 
 export default function ScrapersPage() {
   const [selectedPortal, setSelectedPortal] = useState<string | null>(null);
-  const [scraping, setScraping] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [fileName, setFileName] = useState<string | null>(null);
   const [lastScrapedAt, setLastScrapedAt] = useState<string | null>(null);
   const [selected, setSelected] = useState<Job | null>(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -31,7 +29,6 @@ export default function ScrapersPage() {
       const r = await fetch("/api/scrape/results?portal=linkedin");
       const j = await r.json();
       if (j.ok && Array.isArray(j.data)) {
-        // Filter out jobs with timeout errors
         const filteredJobs = j.data.filter((job: Job) => {
           // Remove jobs with timeout errors
           if (job.error?.includes("Timeout") || job.error?.includes("timeout")) {
@@ -50,8 +47,6 @@ export default function ScrapersPage() {
         });
         
         setJobs(filteredJobs);
-        setFileName(j.file || null);
-        // Extract date from filename, it usually has a timestamp
         if (j.file) {
           const match = j.file.match(/(\d{4}-\d{2}-\d{2}|\d{13})/);
           if (match) {
@@ -64,12 +59,10 @@ export default function ScrapersPage() {
         }
       } else {
         setJobs([]);
-        setFileName(null);
       }
     } catch (err) {
       console.error(err);
       setJobs([]);
-      setFileName(null);
     }
   }, []);
 
