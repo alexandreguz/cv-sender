@@ -1,66 +1,85 @@
-// POST /api/generate-cv — generates a PDF resume for a specific job
-// Uses the stored base profile and the job details to build the PDF via pdf-lib.
-// On success, marks the job status as "ready" and stores the cvId.
+// POST /api/generate-cv
+// Generates a tailored PDF resume for a specific job using a chosen CvProfile.
+// Special value cvProfileId="__base__" generates a plain Base Profile CV with no job-title overlay.
+// On success: stores CvDocument (persisted), stores PDF bytes (in-memory), updates job status.
 import { NextResponse } from "next/server";
-import { getProfile, storeCV, updateJob, listJobs, type Profile, type Job } from "@/lib/server/db";
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import {
+  getProfile,
+  getCvProfile,
+  storeCV,
+  storeCvDocument,
+  updateJob,
+  listJobs,
+  type Job,
+  type CvDocument,
+} from "@/lib/server/db";
+import { buildCvPdf } from "@/lib/server/pdf";
+
+/** Sentinel value used when the user wants a plain Base Profile CV with no job-type overlay. */
+const BASE_PROFILE_ID = "__base__";
 
 /** Finds a job by id from the in-memory list. Returns null if not found. */
 function findJobById(jobId: string): Job | null {
   return listJobs().find((j) => j.id === jobId) ?? null;
 }
 
-/**
- * Builds a simple A4 PDF with candidate info and job details.
- * Uses the base profile for personal data; falls back to empty strings when fields are missing.
- */
-async function generateCvPdfBytes(profile: Profile | null, job: Job): Promise<Uint8Array> {
-  const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([595, 842]); // A4 dimensions in points
-  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-
-  let cursorY = 800;
-
-  /** Draws a single line of text and moves the cursor down. */
-  const put = (text: string) => {
-    page.drawText(text, { x: 50, y: cursorY, size: 11, font });
-    cursorY -= 18;
-  };
-
-  put(`Name: ${profile?.name ?? ""}`);
-  put(`Email: ${profile?.email ?? ""}`);
-  put(`Applying to: ${job.title} — ${job.company}`);
-  cursorY -= 10;
-  put("Skills:");
-  put(profile?.skills ?? "");
-  put("Experience:");
-  // Flatten structured experiences into plain text for the PDF
-  const expText = (profile?.experiences ?? [])
-    .map((e) => `${e.position} at ${e.company} (${e.startDate}${e.isCurrent ? " — Present" : e.endDate ? ` — ${e.endDate}` : ""})`)
-    .join(", ");
-  put(expText);
-
-  return pdfDoc.save();
-}
-
-/** Validates the request, generates the PDF, stores it, and updates the job record. */
+/** Validates the request, generates the PDF, stores the CvDocument, and updates the job. */
 export async function POST(req: Request) {
   const body = await req.json();
-  const { jobId } = body;
+  const { jobId, cvProfileId } = body;
 
-  if (!jobId) return NextResponse.json({ error: "jobId required" }, { status: 400 });
+  if (!jobId) return NextResponse.json({ error: "jobId is required" }, { status: 400 });
+  if (!cvProfileId) return NextResponse.json({ error: "cvProfileId is required" }, { status: 400 });
 
   const job = findJobById(jobId);
   if (!job) return NextResponse.json({ error: "job not found" }, { status: 404 });
 
   const profile = getProfile();
-  const pdfBytes = await generateCvPdfBytes(profile, job);
 
-  // Store the PDF bytes in memory and link its id to the job
+  // Build the CvDocument fields.
+  // "__base__" uses the base profile data directly (no job-specific title or tailored skills).
+  let docTitle: string;
+  let docSummary: string;
+  let docSkills: string[];
+
+  if (cvProfileId === BASE_PROFILE_ID) {
+    docTitle = "";  // no job title below the name — this is the generic resume
+    docSummary = profile?.summary ?? "";
+    docSkills = (profile?.skills ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  } else {
+    const cvProfile = getCvProfile(cvProfileId);
+    if (!cvProfile) return NextResponse.json({ error: "CV profile not found" }, { status: 404 });
+    docTitle = cvProfile.title;
+    docSummary = cvProfile.summary ?? "";
+    docSkills = cvProfile.skills;
+  }
+
+  // Build a temporary CvDocument object to drive PDF generation (id filled in after storeCV)
+  const tempDoc: CvDocument = {
+    id: "",
+    jobId,
+    profileId: profile?.id ?? "",
+    cvProfileId,
+    title: docTitle,
+    summary: docSummary,
+    skills: docSkills,
+    updatedAt: new Date().toISOString(),
+  };
+
+  // Generate PDF bytes from base profile + CvDocument content
+  const pdfBytes = await buildCvPdf(profile, tempDoc);
+
+  // Store PDF bytes in memory — storeCV returns the assigned id
   const cvId = storeCV(jobId, profile?.id ?? null, pdfBytes);
 
-  // Mark the job as ready so the dashboard and automation API can pick it up
-  updateJob(jobId, { status: "ready", cvId });
+  // Persist the CvDocument using the same id assigned to the PDF
+  storeCvDocument({ ...tempDoc, id: cvId });
+
+  // Mark the job as ready and record which CvProfile was used
+  updateJob(jobId, { status: "ready", cvId, cvProfileId });
 
   return NextResponse.json({ message: "CV generated", cvId });
 }

@@ -211,6 +211,8 @@ export type Job = {
   status: "new" | "ready" | "sent" | "viewed" | "interview" | "rejected" | "no_response";
   /** ID of the generated CV, null if no CV has been created yet */
   cvId?: string | null;
+  /** ID of the CvProfile used when generating the CV */
+  cvProfileId?: string | null;
   createdAt: string;
 };
 
@@ -262,6 +264,58 @@ export function deleteJob(id: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// CvDocument — structured CV content snapshot (persisted); used for preview + edit
+// ---------------------------------------------------------------------------
+
+export type CvDocument = {
+  id: string;          // same id as the PDF cvId stored on the Job
+  jobId: string;
+  profileId: string;   // base profile id at generation time
+  cvProfileId: string; // which CvProfile was used
+  title: string;       // job title from CvProfile — shown below candidate name; editable
+  summary: string;     // tailored summary from CvProfile — editable per application
+  skills: string[];    // tailored skills from CvProfile — editable per application
+  updatedAt: string;
+};
+
+const CV_DOCUMENTS_FILE = path.join(DATA_DIR, "cv-documents.json");
+
+// Load all CvDocuments from disk once at module startup
+const CV_DOCUMENTS: Map<string, CvDocument> = new Map(
+  readJson<CvDocument[]>(CV_DOCUMENTS_FILE, []).map((d) => [d.id, d])
+);
+
+/** Serialises all CvDocuments to disk. */
+function persistCvDocuments() {
+  writeJson(CV_DOCUMENTS_FILE, Array.from(CV_DOCUMENTS.values()));
+}
+
+/** Stores a new CvDocument and persists to disk. Returns the stored document. */
+export function storeCvDocument(doc: CvDocument): CvDocument {
+  CV_DOCUMENTS.set(doc.id, doc);
+  persistCvDocuments();
+  return doc;
+}
+
+/** Returns a CvDocument by id, or null if not found. */
+export function getCvDocument(id: string): CvDocument | null {
+  return CV_DOCUMENTS.get(id) ?? null;
+}
+
+/** Applies a partial patch to an existing CvDocument and persists. Returns null if not found. */
+export function updateCvDocument(
+  id: string,
+  patch: Partial<Pick<CvDocument, "title" | "summary" | "skills">>
+): CvDocument | null {
+  const existing = CV_DOCUMENTS.get(id);
+  if (!existing) return null;
+  const updated: CvDocument = { ...existing, ...patch, updatedAt: new Date().toISOString() };
+  CV_DOCUMENTS.set(id, updated);
+  persistCvDocuments();
+  return updated;
+}
+
+// ---------------------------------------------------------------------------
 // CV — generated PDF bytes (in-memory only; lost on server restart)
 // ---------------------------------------------------------------------------
 
@@ -276,9 +330,17 @@ type CV = {
 // CVs live only in RAM — persisting large binary blobs to JSON is impractical.
 const CVS: Map<string, CV> = new Map();
 
-/** Stores generated PDF bytes in memory and links the CV id back to the job record. */
-export function storeCV(jobId: string, profileId: string | null, pdfBytes: Uint8Array): string {
-  const id = randomUUID();
+/**
+ * Stores generated PDF bytes in memory under the given id (or a new UUID if omitted).
+ * Links the CV id back to the job record so the dashboard can serve a download link.
+ */
+export function storeCV(
+  jobId: string,
+  profileId: string | null,
+  pdfBytes: Uint8Array,
+  existingId?: string
+): string {
+  const id = existingId ?? randomUUID();
   CVS.set(id, { id, jobId, profileId, pdfBytes, createdAt: new Date().toISOString() });
   // Keep the job's cvId in sync so the dashboard can show a download link
   const job = JOBS.get(jobId);
@@ -304,6 +366,8 @@ export function clearAllForDev() {
   JOBS.clear();
   CVS.clear();
   CV_PROFILES.clear();
+  CV_DOCUMENTS.clear();
   persistJobs();
   persistCvProfiles();
+  persistCvDocuments();
 }

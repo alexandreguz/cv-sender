@@ -4,12 +4,19 @@
 // and holds the tailored skills, search keywords, and target platforms for that role.
 // Data is fetched from and persisted to /api/cv-profiles → data/cv-profiles.json.
 import { useState, useEffect, useCallback } from "react";
-import { Briefcase, Plus, Edit2, Trash2, Tag, X, Save, Loader2, ToggleLeft, ToggleRight } from "lucide-react";
+import { Briefcase, Plus, Edit2, Trash2, Tag, X, Save, Loader2, ToggleLeft, ToggleRight, User, ExternalLink, Lock } from "lucide-react";
 import { toast } from "sonner";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+type BaseProfile = {
+  name: string;
+  email?: string;
+  summary?: string;
+  skills?: string;
+};
 
 type CvProfile = {
   id: string;
@@ -46,6 +53,7 @@ const EMPTY_FORM: FormState = {
 
 export default function CvProfilesPage() {
   const [profiles, setProfiles] = useState<CvProfile[]>([]);
+  const [baseProfile, setBaseProfile] = useState<BaseProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   // editing = null (closed) | "new" | "<profile id>"
@@ -72,9 +80,20 @@ export default function CvProfilesPage() {
     }
   }, []);
 
+  /** Fetches the base personal profile to display the read-only Base Profile card. */
+  const loadBaseProfile = useCallback(async () => {
+    try {
+      const r = await fetch("/api/profile");
+      if (r.ok) setBaseProfile(await r.json());
+    } catch {
+      // non-critical — card will show a placeholder if missing
+    }
+  }, []);
+
   useEffect(() => {
     load();
-  }, [load]);
+    loadBaseProfile();
+  }, [load, loadBaseProfile]);
 
   // -------------------------------------------------------------------------
   // Modal helpers
@@ -235,15 +254,18 @@ export default function CvProfilesPage() {
         <div className="flex items-center gap-2 text-gray-500">
           <Loader2 className="w-4 h-4 animate-spin" /> Loading profiles...
         </div>
-      ) : profiles.length === 0 ? (
-        <div className="text-center py-16 bg-white border border-dashed border-gray-300 rounded-xl">
-          <Briefcase className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500 font-medium">No profiles yet</p>
-          <p className="text-gray-400 text-sm mt-1">Create your first CV profile to get started.</p>
-        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {profiles.map((p) => (
+          {/* Base Profile card — always first, read-only */}
+          <BaseProfileCard profile={baseProfile} />
+
+          {profiles.length === 0 ? (
+            <div className="md:col-span-2 lg:col-span-2 text-center py-16 bg-white border border-dashed border-gray-300 rounded-xl flex flex-col items-center justify-center">
+              <Briefcase className="w-10 h-10 text-gray-300 mb-3" />
+              <p className="text-gray-500 font-medium">No job profiles yet</p>
+              <p className="text-gray-400 text-sm mt-1">Click &quot;New Profile&quot; to add your first job type.</p>
+            </div>
+          ) : profiles.map((p) => (
             <ProfileCard
               key={p.id}
               profile={p}
@@ -276,6 +298,74 @@ export default function CvProfilesPage() {
         />
       )}
     </main>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// BaseProfileCard — read-only card always shown first in the grid
+// ---------------------------------------------------------------------------
+
+type BaseProfileCardProps = { profile: BaseProfile | null };
+
+/**
+ * Displays the base personal profile as a non-editable card.
+ * Includes a lock badge and a link to edit the profile on /profile.
+ */
+function BaseProfileCard({ profile }: BaseProfileCardProps) {
+  const skillCount = (profile?.skills ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean).length;
+
+  return (
+    <div className="bg-white rounded-xl border-2 border-indigo-200 p-5 relative">
+      {/* Lock badge — indicates read-only */}
+      <div className="absolute top-3 right-3 flex items-center gap-1 bg-indigo-50 text-indigo-600 text-xs font-medium px-2 py-0.5 rounded-full border border-indigo-200">
+        <Lock className="w-2.5 h-2.5" /> Base
+      </div>
+
+      {/* Card header */}
+      <div className="flex items-center gap-2 mb-3 pr-16">
+        <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
+          <User className="w-4 h-4 text-indigo-600" />
+        </div>
+        <div className="min-w-0">
+          <h3 className="font-semibold text-gray-900 text-sm truncate">
+            {profile?.name ?? "Base Profile"}
+          </h3>
+          {profile?.email && (
+            <p className="text-xs text-gray-400 truncate">{profile.email}</p>
+          )}
+        </div>
+      </div>
+
+      {/* Summary preview */}
+      {profile?.summary && (
+        <p className="text-xs text-gray-500 mb-3 line-clamp-2">{profile.summary}</p>
+      )}
+
+      {/* Skill count badge */}
+      {skillCount > 0 && (
+        <div className="mb-3">
+          <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full text-xs">
+            {skillCount} base skill{skillCount !== 1 ? "s" : ""}
+          </span>
+        </div>
+      )}
+
+      {/* Placeholder when no profile saved yet */}
+      {!profile && (
+        <p className="text-xs text-gray-400 mb-3 italic">No base profile saved yet.</p>
+      )}
+
+      {/* Edit link — navigates to /profile instead of opening a modal */}
+      <a
+        href="/profile"
+        className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 transition-colors mt-1"
+      >
+        <ExternalLink className="w-3 h-3" /> Edit in Base Profile
+      </a>
+    </div>
   );
 }
 
