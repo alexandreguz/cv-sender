@@ -2,8 +2,8 @@ export const runtime = "nodejs";
 
 // POST /api/scrape/linkedin
 // Scrapes LinkedIn job listings for the configured keywords/location using Playwright.
-// Accepts optional { keywords, location } in the request body to override stored values.
-// Results are saved to data/linkedin-about-jobs-{timestamp}.json and also returned inline.
+// Accepts optional { keywords, location, city } in the request body to override stored values.
+// Results are saved to data/linkedin/{timestamp}.json and also returned inline.
 import fs from "fs/promises";
 import path from "path";
 import type { Page } from "playwright";
@@ -13,9 +13,9 @@ import { getKeywords, setKeywords } from "@/lib/server/db";
 // File helpers
 // ---------------------------------------------------------------------------
 
-/** Writes data as pretty-printed JSON to a timestamped file in data/ and returns file metadata. */
+/** Writes data as pretty-printed JSON to a timestamped file in data/linkedin/ and returns file metadata. */
 async function saveJson(filenameBase: string, data: unknown) {
-  const dir = path.resolve(process.cwd(), "data");
+  const dir = path.resolve(process.cwd(), "data", "linkedin");
   await fs.mkdir(dir, { recursive: true });
   const name = `${filenameBase}-${Date.now()}.json`;
   const file = path.join(dir, name);
@@ -198,10 +198,16 @@ export async function POST(req: Request) {
     : typeof body?.keywords === "string"
     ? (body.keywords as string).split(/[,;\n]/).map((s) => s.trim()).filter(Boolean)
     : [];
-  const bodyLocation =
-    typeof body?.location === "string" && (body.location as string).trim()
-      ? (body.location as string).trim()
-      : "";
+
+  const bodyCountry =
+    typeof body?.country === "string" ? body.country.trim() : "";
+  const bodyCity =
+    typeof body?.city === "string" ? body.city.trim() : "";
+
+  // Combine city + country into a single LinkedIn location string
+  const bodyLocation = bodyCity && bodyCountry
+    ? `${bodyCity}, ${bodyCountry}`
+    : bodyCountry || (typeof body?.location === "string" ? body.location.trim() : "");
 
   // Fall back to stored keywords when the request body does not supply them
   const kw = getKeywords();
@@ -347,8 +353,15 @@ export async function POST(req: Request) {
     const payloadToSave = { search: { titles, location, searchUrls: searchUrlsUsed }, results };
     const saved = await saveJson("linkedin-about-jobs", payloadToSave);
 
+    // Include search metadata in the response so the UI can display a session summary card
     return new Response(
-      JSON.stringify({ ok: true, portal: "linkedin", ...saved, results }),
+      JSON.stringify({
+        ok: true,
+        portal: "linkedin",
+        ...saved,
+        results,
+        meta: { titles, location, searchedAt: new Date().toISOString() },
+      }),
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (err) {

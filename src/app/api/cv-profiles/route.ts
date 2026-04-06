@@ -10,7 +10,7 @@ export async function GET() {
 
 /**
  * Validates the request body and creates a new CV profile.
- * Required: title. Optional: summary, skills, search_keywords, platforms, is_active.
+ * Required: title. Optional: company, summary, skills, search_keywords, platforms, is_active.
  */
 export async function POST(req: Request) {
   const body = await req.json();
@@ -21,6 +21,9 @@ export async function POST(req: Request) {
 
   const profile = createCvProfile({
     title: body.title,
+    // company and url are optional — set when the profile is created from a specific job posting
+    company: typeof body.company === "string" && body.company.trim() ? body.company.trim() : undefined,
+    url: typeof body.url === "string" && body.url.trim() ? body.url.trim() : undefined,
     summary: body.summary ?? "",
     skills: Array.isArray(body.skills) ? body.skills : [],
     search_keywords: Array.isArray(body.search_keywords) ? body.search_keywords : [],

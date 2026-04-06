@@ -4,7 +4,7 @@
 // and holds the tailored skills, search keywords, and target platforms for that role.
 // Data is fetched from and persisted to /api/cv-profiles → data/cv-profiles.json.
 import { useState, useEffect, useCallback } from "react";
-import { Briefcase, Plus, Edit2, Trash2, Tag, X, Save, Loader2, ToggleLeft, ToggleRight, User, ExternalLink, Lock } from "lucide-react";
+import { Briefcase, Plus, Edit2, Trash2, Tag, X, Save, Loader2, ToggleLeft, ToggleRight, User, ExternalLink, Lock, Calendar, LayoutDashboard } from "lucide-react";
 import { toast } from "sonner";
 
 // ---------------------------------------------------------------------------
@@ -21,6 +21,10 @@ type BaseProfile = {
 type CvProfile = {
   id: string;
   title: string;
+  /** Company this profile was created for (set when created from a job posting) */
+  company?: string;
+  /** Original job posting URL (set when created from a scraper result) */
+  url?: string;
   summary?: string;
   skills: string[];
   search_keywords: string[];
@@ -229,6 +233,32 @@ export default function CvProfilesPage() {
     }
   }
 
+  /**
+   * Creates a new job entry in the dashboard using the CV profile's title and company.
+   * The job is pre-linked to this profile so the user can generate the CV immediately.
+   */
+  async function addProfileToDashboard(profile: CvProfile) {
+    try {
+      const res = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: profile.title,
+          company: profile.company ?? "",
+          // Include the original job posting URL so the dashboard shows the source link icon
+          url: profile.url ?? "",
+          source: profile.url ? "linkedin" : "manual",
+          status: "new",
+          cvProfileId: profile.id,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      toast.success("Added to Dashboard");
+    } catch {
+      toast.error("Failed to add to Dashboard");
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
@@ -272,6 +302,7 @@ export default function CvProfilesPage() {
               onEdit={() => openEdit(p)}
               onDelete={() => deleteProfile(p.id)}
               onToggleActive={() => toggleActive(p)}
+              onAddToDashboard={() => addProfileToDashboard(p)}
             />
           ))}
         </div>
@@ -378,10 +409,11 @@ type ProfileCardProps = {
   onEdit: () => void;
   onDelete: () => void;
   onToggleActive: () => void;
+  onAddToDashboard: () => void;
 };
 
 /** Displays a single CV profile as a card with title, summary, skill badges, platform badges, and action buttons. */
-function ProfileCard({ profile, onEdit, onDelete, onToggleActive }: ProfileCardProps) {
+function ProfileCard({ profile, onEdit, onDelete, onToggleActive, onAddToDashboard }: ProfileCardProps) {
   const visibleSkills = profile.skills.slice(0, 5);
   const extraSkills = profile.skills.length - 5;
 
@@ -389,11 +421,17 @@ function ProfileCard({ profile, onEdit, onDelete, onToggleActive }: ProfileCardP
     <div className={`bg-white rounded-xl border p-5 transition-shadow hover:shadow-md ${profile.is_active ? "border-gray-200" : "border-gray-100 opacity-60"}`}>
       {/* Card header */}
       <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
             <Briefcase className="w-4 h-4 text-blue-600" />
           </div>
-          <h3 className="font-semibold text-gray-900 text-sm">{profile.title}</h3>
+          <div>
+            <h3 className="font-semibold text-gray-900 text-sm">{profile.title}</h3>
+            {/* Show originating company when profile was created from a job posting */}
+            {profile.company && (
+              <p className="text-xs text-gray-500 mt-0.5">{profile.company}</p>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-1">
@@ -434,12 +472,28 @@ function ProfileCard({ profile, onEdit, onDelete, onToggleActive }: ProfileCardP
 
       {/* Platforms */}
       {profile.platforms.length > 0 && (
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5 mb-3">
           {profile.platforms.map((pl) => (
             <span key={pl} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs">{pl}</span>
           ))}
         </div>
       )}
+
+      {/* Footer: creation date + Add to Dashboard button */}
+      <div className="flex items-center justify-between mt-auto pt-2 border-t border-gray-100">
+        <p className="text-xs text-gray-400 flex items-center gap-1">
+          <Calendar className="w-3 h-3" />
+          {new Date(profile.createdAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+        </p>
+        <button
+          onClick={onAddToDashboard}
+          title="Add to Dashboard"
+          className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-colors"
+        >
+          <LayoutDashboard className="w-3 h-3" />
+          Add to Dashboard
+        </button>
+      </div>
     </div>
   );
 }

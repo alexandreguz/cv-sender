@@ -29,6 +29,8 @@ type Job = {
 type CvProfile = {
   id: string;
   title: string;
+  /** Company name when profile was created from a specific job posting */
+  company?: string;
   is_active: boolean;
 };
 
@@ -364,8 +366,11 @@ export default function DashboardPage() {
                             }
                             className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[160px]"
                           >
+                            {/* Show company alongside title when the profile was created from a specific job posting */}
                             {cvProfiles.map((p) => (
-                              <option key={p.id} value={p.id}>{p.title}</option>
+                              <option key={p.id} value={p.id}>
+                                {p.title}{p.company ? ` · ${p.company}` : ""}
+                              </option>
                             ))}
                           </select>
                         )}

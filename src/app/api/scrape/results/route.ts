@@ -1,32 +1,61 @@
 export const runtime = "nodejs";
 
-// GET /api/scrape/results?portal=linkedin
-// Returns the parsed contents of the most recent scrape result file for the given portal.
-// Currently only "linkedin" is supported; other portals return 400.
+// GET  /api/scrape/results?portal=linkedin
+//   Returns all scrape sessions from data/linkedin/ as an array, newest first.
+//   Each session: { file, jobs, meta, searchedAt }
+//
+// DELETE /api/scrape/results?file=<filename>
+//   Deletes the given result file from data/linkedin/.
 import fs from "fs/promises";
 import path from "path";
 
-/**
- * Scans the data/ directory for files matching the LinkedIn result pattern
- * and returns the full path of the most recent one (sorted lexicographically by filename).
- * Returns null if no matching file exists.
- */
-async function findLatestLinkedinFile(): Promise<string | null> {
-  const dir = path.resolve(process.cwd(), "data");
+const LINKEDIN_DIR = () => path.resolve(process.cwd(), "data", "linkedin");
+
+type Session = {
+  file: string;
+  jobs: unknown[];
+  meta: Record<string, unknown> | null;
+  searchedAt: string | null;
+};
+
+/** Parse a single result file into a Session object. */
+async function parseFile(filePath: string): Promise<Session | null> {
   try {
-    const files = await fs.readdir(dir);
-    const matches = files.filter(
-      (f) => f.startsWith("linkedin-about-jobs-") && f.endsWith(".json")
-    );
-    if (!matches.length) return null;
-    matches.sort(); // filenames include a timestamp, so alphabetical = chronological
-    return path.join(dir, matches[matches.length - 1]);
+    const raw = await fs.readFile(filePath, "utf8");
+    const json = JSON.parse(raw);
+    const jobs = Array.isArray(json.results) ? json.results : Array.isArray(json) ? json : [];
+    const meta: Record<string, unknown> | null = json.search ?? null;
+
+    // Extract timestamp from filename for display (13-digit unix ms)
+    const basename = path.basename(filePath);
+    const tsMatch = basename.match(/(\d{13})/);
+    const searchedAt = tsMatch ? new Date(parseInt(tsMatch[1])).toLocaleString() : null;
+
+    return { file: basename, jobs, meta, searchedAt };
   } catch {
     return null;
   }
 }
 
-/** Reads the latest LinkedIn scrape file and returns its job results array. */
+/** Collect all session files from data/linkedin/, newest first. */
+async function collectAllSessions(): Promise<Session[]> {
+  const sessions: Session[] = [];
+  try {
+    const files = (await fs.readdir(LINKEDIN_DIR()))
+      .filter((f) => f.endsWith(".json"))
+      .sort()
+      .reverse(); // newest first
+    for (const f of files) {
+      const s = await parseFile(path.join(LINKEDIN_DIR(), f));
+      if (s) sessions.push(s);
+    }
+  } catch {
+    // directory may not exist yet — return empty list
+  }
+  return sessions;
+}
+
+/** GET — return all sessions for the requested portal. */
 export async function GET(req: Request) {
   const portal = new URL(req.url).searchParams.get("portal") ?? "linkedin";
 
@@ -37,27 +66,34 @@ export async function GET(req: Request) {
     });
   }
 
-  const file = await findLatestLinkedinFile();
-  if (!file) {
-    return new Response(JSON.stringify({ ok: false, error: "No LinkedIn result file found" }), {
-      status: 404,
+  const sessions = await collectAllSessions();
+  return new Response(JSON.stringify({ ok: true, sessions }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+/** DELETE — remove a single result file by filename. */
+export async function DELETE(req: Request) {
+  const filename = new URL(req.url).searchParams.get("file");
+  if (!filename || filename.includes("/") || filename.includes("..")) {
+    return new Response(JSON.stringify({ ok: false, error: "Invalid filename" }), {
+      status: 400,
       headers: { "Content-Type": "application/json" },
     });
   }
 
+  // Only delete files that live inside data/linkedin/
   try {
-    const raw = await fs.readFile(file, "utf8");
-    const json = JSON.parse(raw);
-    // The file may wrap results in a { results: [] } envelope or be a bare array
-    const jobs = Array.isArray(json.results) ? json.results : Array.isArray(json) ? json : [];
-    return new Response(
-      JSON.stringify({ ok: true, file: path.basename(file), data: jobs }),
-      { status: 200, headers: { "Content-Type": "application/json" } }
-    );
-  } catch (err) {
-    return new Response(
-      JSON.stringify({ ok: false, error: String(err instanceof Error ? err.message : err) }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+    await fs.unlink(path.join(LINKEDIN_DIR(), filename));
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch {
+    return new Response(JSON.stringify({ ok: false, error: "File not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }

@@ -102,6 +102,10 @@ export function setProfile(patch: Partial<Omit<Profile, "id">>): Profile {
 export type CvProfile = {
   id: string;
   title: string;
+  /** Company this profile was created for (set when created from a specific job posting) */
+  company?: string;
+  /** Original job posting URL (set when created from a scraper result) */
+  url?: string;
   /** Tailored objective / summary for this job type */
   summary?: string;
   /** Technical skills specific to this profile */
