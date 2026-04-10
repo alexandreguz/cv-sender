@@ -53,7 +53,9 @@ export async function POST(req: Request) {
     const cvProfile = getCvProfile(cvProfileId);
     if (!cvProfile) return NextResponse.json({ error: "CV profile not found" }, { status: 404 });
     docTitle = cvProfile.title;
-    docSummary = cvProfile.summary ?? "";
+    // Fall back to the base profile summary when the CvProfile has no tailored summary.
+    // This ensures the Summary section always appears — only skills change per profile.
+    docSummary = cvProfile.summary?.trim() ? cvProfile.summary : (profile?.summary ?? "");
     docSkills = cvProfile.skills;
   }
 
