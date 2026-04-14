@@ -1,10 +1,10 @@
 export const runtime = "nodejs";
 
-// GET  /api/scrape/results?portal=linkedin|alljobs
+// GET  /api/scrape/results?portal=linkedin|alljobs|drushim
 //   Returns all scrape sessions for the given portal as an array, newest first.
 //   Each session: { file, portal, jobs, meta, searchedAt }
 //
-// DELETE /api/scrape/results?file=<filename>&portal=linkedin|alljobs
+// DELETE /api/scrape/results?file=<filename>&portal=linkedin|alljobs|drushim
 //   Deletes the given result file from the portal's data directory.
 import fs from "fs/promises";
 import path from "path";
@@ -16,6 +16,7 @@ import path from "path";
 const PORTAL_DIRS: Record<string, () => string> = {
   linkedin: () => path.resolve(process.cwd(), "data", "linkedin"),
   alljobs: () => path.resolve(process.cwd(), "data", "alljobs"),
+  drushim: () => path.resolve(process.cwd(), "data", "drushim"),
 };
 
 /** Returns the data directory for the given portal, or null for unknown portals. */

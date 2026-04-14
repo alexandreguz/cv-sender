@@ -17,6 +17,7 @@ import {
   Eye,
 } from "lucide-react";
 import { ALLJOBS_CITIES } from "@/lib/server/alljobs-cities";
+import { DRUSHIM_CITIES } from "@/lib/server/drushim-cities";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -44,7 +45,7 @@ type SessionMeta = {
 
 type Session = {
   file: string;
-  portal: "linkedin" | "alljobs";
+  portal: "linkedin" | "alljobs" | "drushim";
   jobs: ScrapedJob[];
   meta: SessionMeta | null;
   searchedAt: string | null;
@@ -86,11 +87,13 @@ function filterJobs(jobs: unknown[]): ScrapedJob[] {
 const PORTAL_LABELS: Record<string, string> = {
   linkedin: "LinkedIn",
   alljobs: "AllJobs",
+  drushim: "Drushim",
 };
 
 const PORTAL_BADGE_CLASSES: Record<string, string> = {
   linkedin: "bg-blue-100 text-blue-700",
   alljobs: "bg-orange-100 text-orange-700",
+  drushim: "bg-green-100 text-green-700",
 };
 
 // ---------------------------------------------------------------------------
@@ -329,12 +332,22 @@ function LinkedinIcon({ size = 18, className = "" }: { size?: number; className?
   );
 }
 
-/** AllJobs logo approximation — briefcase with "AJ" label. */
+/** AllJobs logo approximation — briefcase icon. */
 function AllJobsIcon({ size = 18, className = "" }: { size?: number; className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
       <rect x="2" y="7" width="20" height="14" rx="2" />
       <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" fill="none" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+/** Drushim logo approximation — magnifying glass icon. */
+function DrushimIcon({ size = 18, className = "" }: { size?: number; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
     </svg>
   );
 }
@@ -358,7 +371,13 @@ export default function ScrapersPage() {
   const [ajCityLabel, setAjCityLabel] = useState("All Israel");
   const [ajScraping, setAjScraping] = useState(false);
 
-  // All saved sessions (both portals merged, sorted newest first)
+  // Drushim search form state
+  const [showDrushimForm, setShowDrushimForm] = useState(false);
+  const [drJobTitle, setDrJobTitle] = useState("");
+  const [drCityIdx, setDrCityIdx] = useState(0); // index into DRUSHIM_CITIES
+  const [drScraping, setDrScraping] = useState(false);
+
+  // All saved sessions (all portals merged, sorted newest first)
   const [sessions, setSessions] = useState<Session[]>([]);
 
   // Modal state
@@ -370,35 +389,31 @@ export default function ScrapersPage() {
   // Adding-to-dashboard loading state per job url
   const [addingJob, setAddingJob] = useState<string | null>(null);
 
-  /** Fetch sessions from both portals and merge, newest first. */
+  /** Fetch sessions from all portals and merge, newest first. */
   const loadSessions = useCallback(async () => {
     try {
-      const [liRes, ajRes] = await Promise.allSettled([
+      const [liRes, ajRes, drRes] = await Promise.allSettled([
         fetch("/api/scrape/results?portal=linkedin").then((r) => r.json()),
         fetch("/api/scrape/results?portal=alljobs").then((r) => r.json()),
+        fetch("/api/scrape/results?portal=drushim").then((r) => r.json()),
       ]);
 
       const toSessions = (
         result: PromiseSettledResult<{ ok: boolean; sessions?: unknown[] }>,
-        portal: "linkedin" | "alljobs"
+        portal: Session["portal"]
       ): Session[] => {
         if (result.status !== "fulfilled" || !result.value.ok) return [];
         return (result.value.sessions ?? []).map((raw: unknown) => {
           const s = raw as Omit<Session, "jobs" | "showing" | "portal"> & { jobs: unknown[] };
-          return {
-            ...s,
-            portal,
-            jobs: filterJobs(s.jobs),
-            showing: false,
-          };
+          return { ...s, portal, jobs: filterJobs(s.jobs), showing: false };
         });
       };
 
       const merged = [
         ...toSessions(liRes, "linkedin"),
         ...toSessions(ajRes, "alljobs"),
+        ...toSessions(drRes, "drushim"),
       ].sort((a, b) => {
-        // Sort by searchedAt descending (use file timestamp as tiebreak)
         const ta = a.searchedAt ?? a.file;
         const tb = b.searchedAt ?? b.file;
         return ta > tb ? -1 : 1;
@@ -503,6 +518,37 @@ export default function ScrapersPage() {
     }
   }
 
+  /** Run the Drushim scraper. */
+  async function handleDrushimSearch(e: React.FormEvent) {
+    e.preventDefault();
+    if (!drJobTitle.trim()) { toast.error("Job title is required"); return; }
+    const city = DRUSHIM_CITIES[drCityIdx];
+    setDrScraping(true);
+    try {
+      const res = await fetch("/api/scrape/drushim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          keyword: drJobTitle.trim(),
+          cityLabel: city.label,
+          areaPath: city.areaPath,
+          geolexid: city.geolexid,
+          range: city.range,
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error ?? "Scraping failed");
+      const count = filterJobs(Array.isArray(data.results) ? data.results : []).length;
+      toast.success(`Found ${count} job listings`);
+      setShowDrushimForm(false);
+      await loadSessions();
+    } catch (err) {
+      toast.error(`Search failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setDrScraping(false);
+    }
+  }
+
   /** Add a scraped job directly to the dashboard. */
   async function addToDashboard(job: ScrapedJob) {
     const key = job.url ?? job.title ?? "";
@@ -514,7 +560,7 @@ export default function ScrapersPage() {
         body: JSON.stringify({
           title: job.title ?? "",
           company: job.company ?? "",
-          source: "alljobs",
+          source: job.url?.includes("drushim") ? "drushim" : job.url?.includes("linkedin") ? "linkedin" : "alljobs",
           url: job.url ?? "",
           location: job.location ?? "",
           status: "new",
@@ -541,7 +587,7 @@ export default function ScrapersPage() {
         <div className="flex gap-2">
           {/* LinkedIn search button */}
           <button
-            onClick={() => { setShowLinkedInForm((v) => !v); setShowAllJobsForm(false); }}
+            onClick={() => { setShowLinkedInForm((v) => !v); setShowAllJobsForm(false); setShowDrushimForm(false); }}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
           >
             <LinkedinIcon size={16} />
@@ -551,12 +597,22 @@ export default function ScrapersPage() {
 
           {/* AllJobs search button */}
           <button
-            onClick={() => { setShowAllJobsForm((v) => !v); setShowLinkedInForm(false); }}
+            onClick={() => { setShowAllJobsForm((v) => !v); setShowLinkedInForm(false); setShowDrushimForm(false); }}
             className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 transition-colors"
           >
             <AllJobsIcon size={16} />
             Search AllJobs
             {showAllJobsForm ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+
+          {/* Drushim search button */}
+          <button
+            onClick={() => { setShowDrushimForm((v) => !v); setShowLinkedInForm(false); setShowAllJobsForm(false); }}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors"
+          >
+            <DrushimIcon size={16} />
+            Search Drushim
+            {showDrushimForm ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
         </div>
       </div>
@@ -649,10 +705,52 @@ export default function ScrapersPage() {
         </div>
       )}
 
+      {/* Drushim inline search form */}
+      {showDrushimForm && (
+        <div className="bg-white border border-green-200 rounded-xl p-5 mb-6 shadow-sm">
+          <h2 className="text-base font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <DrushimIcon size={16} className="text-green-600" />
+            Drushim Job Search
+          </h2>
+          <form onSubmit={handleDrushimSearch} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Job Title <span className="text-red-500">*</span>
+              </label>
+              <input value={drJobTitle} onChange={(e) => setDrJobTitle(e.target.value)}
+                placeholder="e.g. QA Engineer" required
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                City <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={drCityIdx}
+                onChange={(e) => setDrCityIdx(Number(e.target.value))}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                {DRUSHIM_CITIES.map((c, idx) => (
+                  <option key={`${c.label}-${idx}`} value={idx}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="sm:col-span-2 flex justify-end">
+              <button type="submit" disabled={drScraping}
+                className="flex items-center gap-2 px-5 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-60 transition-colors">
+                {drScraping ? <><Loader2 size={14} className="animate-spin" /> Searching…</> : <><Search size={14} /> Search</>}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Session list */}
       {sessions.length === 0 ? (
         <div className="bg-white border border-dashed border-gray-200 rounded-xl p-8 text-center text-gray-400 text-sm">
-          No search sessions yet. Click &quot;Search LinkedIn&quot; or &quot;Search AllJobs&quot; to start.
+          No search sessions yet. Click &quot;Search LinkedIn&quot;, &quot;Search AllJobs&quot;, or &quot;Search Drushim&quot; to start.
         </div>
       ) : (
         <div className="space-y-4 mb-6">
@@ -662,10 +760,12 @@ export default function ScrapersPage() {
               <div className="flex items-start justify-between p-5">
                 <div className="flex gap-4">
                   <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
-                    session.portal === "linkedin" ? "bg-blue-100" : "bg-orange-100"
+                    session.portal === "linkedin" ? "bg-blue-100" : session.portal === "drushim" ? "bg-green-100" : "bg-orange-100"
                   }`}>
                     {session.portal === "linkedin"
                       ? <LinkedinIcon size={18} className="text-blue-600" />
+                      : session.portal === "drushim"
+                      ? <DrushimIcon size={18} className="text-green-600" />
                       : <AllJobsIcon size={18} className="text-orange-500" />}
                   </div>
                   <div>
@@ -789,7 +889,7 @@ export default function ScrapersPage() {
 
       {/* Other portals placeholder */}
       <div className="bg-white border border-dashed border-gray-200 rounded-xl p-6 text-center text-gray-400 text-sm">
-        Support for Drushim and Jobmaster coming soon.
+        Support for Jobmaster coming soon.
       </div>
 
       {/* Modals */}
