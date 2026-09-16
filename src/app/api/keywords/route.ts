@@ -10,5 +10,5 @@ export async function POST(req: Request) {
   const payload = await req.json();
   // expected { titles?: string[], skills?: string[] }
   const updated = setKeywords(payload);
-  return NextResponse.json({ message: "Keywords atualizadas", keywords: updated });
+  return NextResponse.json({ message: "Keywords updated", keywords: updated });
 }

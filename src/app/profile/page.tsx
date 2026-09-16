@@ -28,51 +28,51 @@ export default function ProfilePage() {
     try {
       localStorage.setItem("profilePreview", JSON.stringify(form));
     } catch (err) {
-      console.error("Erro ao salvar localStorage:", err);
+      console.error("Failed to save localStorage:", err);
     }
 
-    // navega para a página de preview com os dados salvos
+    // navigate to the preview page with the saved data
     router.push("/preview");
   };
 
   return (
     <>
     <main className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-4">Seu Perfil</h1>
+      <h1 className="text-2xl font-bold mb-4">Your Profile</h1>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block font-medium">Nome</label>
+          <label className="block font-medium">Name</label>
           <input
             type="text"
             name="name"
             value={form.name}
             onChange={handleChange}
             className="w-full border rounded p-2"
-            placeholder="Seu nome"
+            placeholder="Your name"
           />
         </div>
 
         <div>
-          <label className="block font-medium">Posição desejada</label>
+          <label className="block font-medium">Desired position</label>
           <input
             type="text"
             name="position"
             value={form.position}
             onChange={handleChange}
             className="w-full border rounded p-2"
-            placeholder="Ex: QA Automation Engineer"
+            placeholder="e.g. QA Automation Engineer"
           />
         </div>
 
         <div>
-          <label className="block font-medium">Contato</label>
+          <label className="block font-medium">Contact</label>
           <input
             type="text"
             name="contact"
             value={form.contact}
             onChange={handleChange}
             className="w-full border rounded p-2"
-            placeholder="Telefone ou celular"
+            placeholder="Phone number"
           />
         </div>
 
@@ -84,7 +84,7 @@ export default function ProfilePage() {
             value={form.email}
             onChange={handleChange}
             className="w-full border rounded p-2"
-            placeholder="seu@exemplo.com"
+            placeholder="you@example.com"
           />
         </div>
 
@@ -108,12 +108,12 @@ export default function ProfilePage() {
             value={form.skills}
             onChange={handleChange}
             className="w-full border rounded p-2"
-            placeholder="Ex: JavaScript, Python, Selenium"
+            placeholder="e.g. JavaScript, Python, Selenium"
           />
         </div>
 
         <div>
-          <label className="block font-medium">Experiência</label>
+          <label className="block font-medium">Experience</label>
           <textarea
             name="experience"
             value={form.experience}
@@ -123,7 +123,7 @@ export default function ProfilePage() {
         </div>
 
         <div>
-          <label className="block font-medium">Educação</label>
+          <label className="block font-medium">Education</label>
           <textarea
             name="education"
             value={form.education}
@@ -136,7 +136,7 @@ export default function ProfilePage() {
           type="submit"
           className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
         >
-          Salvar Perfil
+          Save Profile
         </button>
       </form>
     </main>

@@ -25,7 +25,7 @@
 //       title: `${title} (${portal.toUpperCase()})`,
 //       company: `${portal}-company-${i + 1}`,
 //       location: "Israel",
-//       description: `Vaga ${title} - precisa de ${skillSnippet}. Portal: ${portal}. Responsabilidades: automação, testes, deploy.`,
+//       description: `Job ${title} - requires ${skillSnippet}. Portal: ${portal}. Responsibilities: automation, testing, deploy.`,
 //       source: portal,
 //       url: `https://${portal}.example/job/${Math.floor(Math.random() * 10000)}`,
 //       status: "new" as const,

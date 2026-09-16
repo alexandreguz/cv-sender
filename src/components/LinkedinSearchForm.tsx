@@ -29,10 +29,10 @@ export default function LinkedinSearchForm({ onScrapeFinished }: LinkedinSearchF
       });
       const json = await res.json();
       if (!res.ok) {
-        setError(json?.error || "Erro ao executar o scraper");
+        setError(json?.error || "Failed to run the scraper");
       } else {
         setSavedFile(json?.name || null);
-        setSuccess("Busca concluída. Os resultados estão atualizados na tabela.");
+        setSuccess("Search completed. Results are updated in the table.");
         if (typeof onScrapeFinished === "function") {
           await onScrapeFinished();
         }
@@ -46,24 +46,24 @@ export default function LinkedinSearchForm({ onScrapeFinished }: LinkedinSearchF
 
   return (
     <section className="p-4 bg-white rounded-lg shadow">
-      <h2 className="text-lg font-semibold mb-3">Buscar vagas no LinkedIn</h2>
+      <h2 className="text-lg font-semibold mb-3">Search LinkedIn jobs</h2>
       <form onSubmit={onSubmit} className="space-y-3">
         <div>
-          <label className="block text-sm font-medium">Palavra-chave</label>
+          <label className="block text-sm font-medium">Keyword</label>
           <input
             className="mt-1 block w-full border rounded px-2 py-1"
             value={keywords}
             onChange={(e) => setKeywords(e.target.value)}
-            placeholder="ex: QA Automation Engineer"
+            placeholder="e.g. QA Automation Engineer"
           />
         </div>
         <div>
-          <label className="block text-sm font-medium">Local</label>
+          <label className="block text-sm font-medium">Location</label>
           <input
             className="mt-1 block w-full border rounded px-2 py-1"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
-            placeholder="ex: Israel, Brazil, Remote"
+            placeholder="e.g. Israel, Brazil, Remote"
           />
         </div>
 
@@ -79,11 +79,11 @@ export default function LinkedinSearchForm({ onScrapeFinished }: LinkedinSearchF
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
                 </svg>
-                Procurando...
+                Searching...
               </>
-            ) : "Pesquisar"}
+            ) : "Search"}
           </button>
-          <span className="text-sm text-gray-500">Obs: o scraper pode demorar e sofrer timeouts se o LinkedIn bloquear.</span>
+          <span className="text-sm text-gray-500">Note: the scraper may take a while and time out if LinkedIn blocks it.</span>
         </div>
       </form>
 
@@ -92,7 +92,7 @@ export default function LinkedinSearchForm({ onScrapeFinished }: LinkedinSearchF
       {success && <div className="mt-3 text-green-600">{success}</div>}
 
       {savedFile && (
-        <div className="mt-3 text-sm text-gray-700">Arquivo salvo: <strong>{savedFile}</strong> (pasta /data)</div>
+        <div className="mt-3 text-sm text-gray-700">Saved file: <strong>{savedFile}</strong> (/data folder)</div>
       )}
     </section>
   );

@@ -34,7 +34,7 @@ export default function KeywordsPage() {
       body: JSON.stringify({ titles: t, skills: s, location }),
     });
     console.log("Keywords saved:", { titles: t, skills: s, location });
-    alert("Keywords salvas");
+    alert("Keywords saved");
   }
 
   return (
@@ -53,7 +53,7 @@ export default function KeywordsPage() {
             <input value={skills} onChange={(e) => setSkills(e.target.value)} className="w-full border rounded p-2" placeholder="Selenium, Cypress, Python" />
           </div>
           <div>
-            <label className="block text-sm font-medium">Location (opcional)</label>
+            <label className="block text-sm font-medium">Location (optional)</label>
             <input value={location} onChange={(e) => setLocation(e.target.value)} className="w-full border rounded p-2" placeholder="Israel, Remote, Brazil" />
           </div>
           <div className="flex gap-2">

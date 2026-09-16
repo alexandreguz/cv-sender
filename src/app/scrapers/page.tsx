@@ -120,16 +120,16 @@ export default function ScrapersPage() {
         });
         const gj = await g.json();
         if (gj.cvId) {
-          alert("Job adicionado e CV gerado");
+          alert("Job added and CV generated");
         } else {
-          alert("Job adicionado, mas erro ao gerar CV");
+          alert("Job added, but failed to generate CV");
         }
       } else {
-        alert("Erro ao criar job no dashboard");
+        alert("Failed to create job in dashboard");
       }
     } catch (err) {
       console.error("addToDashboard error", err);
-      alert("Erro ao adicionar ao dashboard");
+      alert("Failed to add to dashboard");
     }
   }
 
@@ -138,7 +138,7 @@ export default function ScrapersPage() {
       <h1 className="text-2xl font-bold mb-4">Scrapers</h1>
 
       <section className="mb-6 bg-white p-4 rounded shadow">
-        <h2 className="text-xl font-semibold mb-2">Portais de Vagas</h2>
+        <h2 className="text-xl font-semibold mb-2">Job Portals</h2>
         <div className="flex gap-2">
           <button
             onClick={() => setSelectedPortal(selectedPortal === "linkedin" ? null : "linkedin")}
@@ -157,7 +157,7 @@ export default function ScrapersPage() {
             className={`px-4 py-2 ${selectedPortal === "drushim" ? "bg-blue-600" : "bg-gray-700"} text-white rounded transition-colors hover:bg-gray-800 cursor-pointer`}
           >Drushim</button>
         </div>
-        <p className="text-sm text-gray-500 mt-2">Selecione um portal para começar a busca.</p>
+        <p className="text-sm text-gray-500 mt-2">Select a portal to start searching.</p>
       </section>
 
       {selectedPortal === "linkedin" && (
@@ -174,7 +174,7 @@ export default function ScrapersPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <p className="text-sm text-blue-700">
-                    <span className="font-medium">Última atualização:</span> {lastScrapedAt}
+                    <span className="font-medium">Last updated:</span> {lastScrapedAt}
                   </p>
                 </div>
               </div>
@@ -242,7 +242,7 @@ export default function ScrapersPage() {
                           }}
                           className="px-3 py-1 bg-green-600 text-white rounded text-sm"
                         >
-                          Adicionar ao dashboard
+                          Add to dashboard
                         </button>
                       </td>
                     </tr>
@@ -256,7 +256,7 @@ export default function ScrapersPage() {
 
       {selectedPortal && selectedPortal !== "linkedin" && (
         <section className="mb-6 bg-white p-4 rounded shadow">
-          <p className="text-gray-600">Formulário de busca para {selectedPortal} será implementado em breve.</p>
+          <p className="text-gray-600">Search form for {selectedPortal} will be implemented soon.</p>
         </section>
       )}
 

@@ -9,7 +9,7 @@ type Params = { portal?: string };
 
 
 
-/** Cria diretório data e salva JSON */
+/** Creates the data directory and saves JSON */
 async function saveJson(filenameBase: string, data: any) {
   const dir = path.resolve(process.cwd(), "data");
   await fs.mkdir(dir, { recursive: true });
@@ -19,7 +19,7 @@ async function saveJson(filenameBase: string, data: any) {
   return { file, name, count: Array.isArray(data) ? data.length : 1 };
 }
 
-/** Extrai a seção "About the job" e campos relacionados */
+/** Extracts the "About the job" section and related fields */
 async function extractAboutTheJob(page: any) {
   const sections = [
     "#job-details",
@@ -45,7 +45,7 @@ async function extractAboutTheJob(page: any) {
   return "";
 }
 
-/** Extrai informações gerais da vaga */
+/** Extracts general job information */
 async function extractJobInfo(page: any) {
   const safeText = async (sel: string) => {
     const locator = page.locator(sel).first();
@@ -74,7 +74,7 @@ async function extractJobInfo(page: any) {
 }
 
 export async function POST(req: Request, _context: { params?: Params | Promise<Params> }) {
-  // Permite sobrescrever keywords/location via payload e persiste para futuros scrapes.
+  // Allow overriding keywords/location via payload and persist them for future scrapes.
   const body = await req.json().catch(() => ({}));
   const bodyKeywords = Array.isArray(body?.keywords)
     ? body.keywords
@@ -97,20 +97,20 @@ export async function POST(req: Request, _context: { params?: Params | Promise<P
     (typeof kw.location === "string" && kw.location.trim() ? kw.location.trim() : "");
 
   if (bodyKeywords.length > 0 || bodyLocation) {
-    // Atualiza armazenamento com os novos parâmetros para manter consistência com /api/keywords.
+    // Update storage with the new parameters to keep consistency with /api/keywords.
     const currentSkills = Array.isArray(kw.skills) ? kw.skills.filter(Boolean) : [];
     const uniqueTitles = Array.from(new Set(titles));
     setKeywords({ titles: uniqueTitles, skills: currentSkills, location });
   }
 
   if (!titles || titles.length === 0) {
-    return new Response(JSON.stringify({ ok: false, error: "Nenhuma keyword configurada. Use /api/keywords para adicionar titles." }), {
+    return new Response(JSON.stringify({ ok: false, error: "No keywords configured. Use /api/keywords to add titles." }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  const sessionCookie = process.env.LINKEDIN_SESSION_COOKIE; // opcional
+  const sessionCookie = process.env.LINKEDIN_SESSION_COOKIE; // optional
   const maxJobs = +(process.env.LINKEDIN_MAX_JOBS || "30");
   const concurrency = +(process.env.LINKEDIN_CONCURRENCY || "3");
 
@@ -124,7 +124,7 @@ export async function POST(req: Request, _context: { params?: Params | Promise<P
       viewport: { width: 1280, height: 800 },
     });
 
-    // se fornecido cookie de sessão (li_at)
+    // if a session cookie (li_at) is provided
     if (sessionCookie) {
       const match = /li_at=([^;]+)/.exec(sessionCookie);
       if (match) {
@@ -144,7 +144,7 @@ export async function POST(req: Request, _context: { params?: Params | Promise<P
 
     const page = await context.newPage();
 
-    // Executa uma busca para cada título configurado até atingir maxJobs
+    // Run a search for each configured title until maxJobs is reached
     let jobLinks: string[] = [];
     const searchUrlsUsed: string[] = [];
 
@@ -157,7 +157,7 @@ export async function POST(req: Request, _context: { params?: Params | Promise<P
       try {
         await page.goto(s, { waitUntil: "networkidle", timeout: 30000 });
 
-        // scroll para carregar conteúdo
+        // scroll to load more content
         await page.evaluate(async () => {
           for (let i = 0; i < 6; i++) {
             window.scrollBy(0, window.innerHeight);
@@ -182,7 +182,7 @@ export async function POST(req: Request, _context: { params?: Params | Promise<P
           if (!jobLinks.includes(l)) jobLinks.push(l);
         }
       } catch (e) {
-        // ignora erros de uma busca específica e continua com próximas keywords
+        // ignore errors from a specific search and continue with the next keywords
         continue;
       }
     }
@@ -308,7 +308,7 @@ export async function POST(req: Request, _context: { params?: Params | Promise<P
             about_requirements: parsed.requirements,
           });
 
-          // pequena pausa entre as requisições
+          // short pause between requests
           await new Promise((r) => setTimeout(r, 500 + Math.random() * 500));
         } catch (err: any) {
           results.push({ url: jobUrl, error: err?.message || String(err) });
@@ -324,7 +324,7 @@ export async function POST(req: Request, _context: { params?: Params | Promise<P
 
     await browser.close();
 
-    // salvar também os parâmetros de busca junto com os resultados
+    // also save the search parameters along with the results
     const payloadToSave = {
       search: { titles, location, searchUrls: searchUrlsUsed },
       results,
@@ -332,7 +332,7 @@ export async function POST(req: Request, _context: { params?: Params | Promise<P
 
     const saved = await saveJson("linkedin-about-jobs", payloadToSave);
 
-    // Retorna metadados do arquivo salvo e os resultados diretamente no corpo
+    // Return saved file metadata and the results in the response body
     return new Response(
       JSON.stringify({ ok: true, portal: "linkedin", ...saved, results }),
       {

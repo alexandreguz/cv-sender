@@ -1,6 +1,6 @@
 // src/lib/server/db.ts
-// simples "banco" em memória para MVP (server-side only)
-// Agora com persistência em arquivo para `keywords` (data/keywords.json)
+// Simple in-memory "database" for the MVP (server-side only)
+// Now with file persistence for `keywords` (data/keywords.json)
 import { randomUUID } from "crypto";
 import fs from "fs";
 import path from "path";
@@ -24,7 +24,7 @@ export type Job = {
   source: string;
   url?: string;
   status: "new" | "ready" | "sent" | "rejected" | "in_process";
-  cvId?: string | null; // id do CV gerado, se houver
+  cvId?: string | null; // generated CV id, if any
   createdAt: string;
 };
 
@@ -40,7 +40,7 @@ const PROFILE: { value: Profile | null } = { value: null };
 const KEYWORDS: { titles: string[]; skills: string[]; location?: string } = { titles: [], skills: [] };
 const KEYWORDS_FILE = path.resolve(process.cwd(), "data", "keywords.json");
 
-// carregar keywords do arquivo (se existir) durante inicialização
+// load keywords from file (if it exists) during initialization
 try {
   if (fs.existsSync(KEYWORDS_FILE)) {
     const raw = fs.readFileSync(KEYWORDS_FILE, "utf8");
@@ -89,7 +89,7 @@ export function setKeywords(payload: { titles?: string[]; skills?: string[]; loc
   if (payload.skills) KEYWORDS.skills = payload.skills;
   if (typeof payload.location === "string") KEYWORDS.location = payload.location;
 
-  // persistir em arquivo
+  // persist to file
   try {
     const dir = path.resolve(process.cwd(), "data");
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });

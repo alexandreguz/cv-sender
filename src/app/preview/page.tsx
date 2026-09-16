@@ -23,30 +23,30 @@ export default function PreviewPage() {
       if (raw) {
         setProfile(JSON.parse(raw));
       } else {
-        // se quiser tentar outra chave comum:
+        // fallback to another common key
         const alt = localStorage.getItem("profile");
         if (alt) setProfile(JSON.parse(alt));
       }
     } catch (e) {
-      console.error("Erro lendo localStorage:", e);
+      console.error("Failed to read localStorage:", e);
     }
   }, []);
 
   const downloadHtml = () => {
     const p = profile || {};
     const html = `<!doctype html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>${p.name ?? "Meu Currículo"}</title>
+<title>${p.name ?? "My Resume"}</title>
 <style>body{font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; color:#0f172a; padding:24px; max-width:900px; margin:0 auto} h1{color:#0ea5e9} .section{margin-bottom:20px} .muted{color:#6b7280}</style>
 </head>
 <body>
 <header>
-  <h1>${p.name ?? "Seu Nome"}</h1>
+  <h1>${p.name ?? "Your Name"}</h1>
   <p class="muted">${p.position ?? ""}</p>
-  <p class="muted">Contato: ${p.contact ?? "—"} • Email: ${p.email ?? "—"}</p>
+  <p class="muted">Contact: ${p.contact ?? "—"} • Email: ${p.email ?? "—"}</p>
   <p class="muted">LinkedIn: ${p.linkedin ?? "—"}</p>
 </header>
 <section class="section">
@@ -54,11 +54,11 @@ export default function PreviewPage() {
   <p>${p.skills ?? "—"}</p>
 </section>
 <section class="section">
-  <h2>Experiência</h2>
+  <h2>Experience</h2>
   <p>${(p.experience ?? "—").replace(/\n/g, "<br/>")}</p>
 </section>
 <section class="section">
-  <h2>Educação</h2>
+  <h2>Education</h2>
   <p>${(p.education ?? "—").replace(/\n/g, "<br/>")}</p>
 </section>
 </body>
@@ -75,13 +75,13 @@ export default function PreviewPage() {
   if (!profile) {
     return (
       <main className="p-6 max-w-4xl mx-auto">
-        <p className="mb-4">Nenhum perfil salvo. Preencha o formulário primeiro.</p>
+        <p className="mb-4">No saved profile. Fill out the form first.</p>
         <div className="flex gap-3">
           <button
             onClick={() => router.push("/profile")}
             className="bg-gray-200 px-4 py-2 rounded"
           >
-            Ir para Formulário
+            Go to Form
           </button>
         </div>
       </main>
@@ -93,10 +93,10 @@ export default function PreviewPage() {
     <main className="max-w-4xl mx-auto p-8 bg-white shadow rounded-lg mt-10 mb-10">
       <header className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-4xl font-bold text-blue-600">{profile.name ?? "Seu Nome"}</h1>
-          <p className="text-xl font-semibold">{profile.position ?? "Posição desejada"}</p>
+          <h1 className="text-4xl font-bold text-blue-600">{profile.name ?? "Your Name"}</h1>
+          <p className="text-xl font-semibold">{profile.position ?? "Desired position"}</p>
           <p className="text-gray-600">
-            Contato: {profile.contact ?? "—"} • Email:{" "}
+            Contact: {profile.contact ?? "—"} • Email:{" "}
             <a className="text-blue-600" href={`mailto:${profile.email ?? ""}`}>
               {profile.email ?? "—"}
             </a>
@@ -123,7 +123,7 @@ export default function PreviewPage() {
             .filter(Boolean);
 
           if (skillsList.length === 0) {
-            return <p>Sem skills informadas</p>;
+            return <p>No skills provided</p>;
           }
 
           return (
@@ -137,16 +137,16 @@ export default function PreviewPage() {
       </section>
 
       <section className="mb-6">
-        <h2 className="text-2xl font-semibold text-blue-600 mb-2">Experiência</h2>
+        <h2 className="text-2xl font-semibold text-blue-600 mb-2">Experience</h2>
         <div className="p-4 border-l-4 border-blue-600 bg-gray-100">
-          <p className="whitespace-pre-line">{profile.experience ?? "Sem experiência informada"}</p>
+          <p className="whitespace-pre-line">{profile.experience ?? "No experience provided"}</p>
         </div>
       </section>
 
       <section className="mb-6">
-        <h2 className="text-2xl font-semibold text-blue-600 mb-2">Educação</h2>
+        <h2 className="text-2xl font-semibold text-blue-600 mb-2">Education</h2>
         <div className="p-4 border-l-4 border-blue-600 bg-gray-100">
-          <p className="whitespace-pre-line">{profile.education ?? "Sem educação informada"}</p>
+          <p className="whitespace-pre-line">{profile.education ?? "No education provided"}</p>
         </div>
       </section>
 
@@ -155,10 +155,10 @@ export default function PreviewPage() {
           onClick={() => router.push("/profile")}
           className="bg-gray-200 px-4 py-2 rounded"
         >
-          Editar
+          Edit
         </button>
         <button onClick={downloadHtml} className="bg-blue-600 text-white px-4 py-2 rounded">
-          Baixar HTML
+          Download HTML
         </button>
       </div>
     </main>

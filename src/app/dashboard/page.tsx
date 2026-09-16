@@ -48,19 +48,19 @@ export default function DashboardPage() {
       });
       const j = await r.json();
       if (j.cvId) {
-        alert("CV gerado");
+        alert("CV generated");
         fetchJobs();
       } else {
-        alert("Erro gerando CV");
+        alert("Error generating CV");
       }
     } catch (err) {
       console.error("generateCv error", err);
-      alert("Erro gerando CV");
+      alert("Error generating CV");
     }
   }
 
   async function downloadCv(cvId?: string | null) {
-    if (!cvId) return alert("Nenhum CV disponível");
+    if (!cvId) return alert("No CV available");
     window.open(`/api/cv/${cvId}`, "_blank");
   }
 
@@ -159,11 +159,11 @@ export default function DashboardPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={cancelRemoval} />
           <div className="relative bg-white rounded shadow-lg max-w-md w-full mx-4 p-6">
-            <h2 className="text-xl font-semibold mb-3">Confirmar exclusão</h2>
+            <h2 className="text-xl font-semibold mb-3">Confirm deletion</h2>
             <p className="text-sm text-gray-600">
-              Tem certeza que deseja remover a vaga{" "}
-              <span className="font-semibold">{jobPendingRemoval.title}</span> da empresa{" "}
-              <span className="font-semibold">{jobPendingRemoval.company}</span>? Esta ação não poderá ser desfeita.
+              Are you sure you want to remove the job{" "}
+              <span className="font-semibold">{jobPendingRemoval.title}</span> at{" "}
+              <span className="font-semibold">{jobPendingRemoval.company}</span>? This action cannot be undone.
             </p>
             <div className="mt-6 flex justify-end gap-2">
               <button
@@ -171,14 +171,14 @@ export default function DashboardPage() {
                 className="px-4 py-2 border rounded"
                 disabled={removing}
               >
-                Cancelar
+                Cancel
               </button>
               <button
                 onClick={() => removeJob(jobPendingRemoval.id)}
                 className="px-4 py-2 bg-red-600 text-white rounded disabled:opacity-60"
                 disabled={removing}
               >
-                {removing ? "Removendo..." : "Remover"}
+                {removing ? "Removing..." : "Remove"}
               </button>
             </div>
           </div>

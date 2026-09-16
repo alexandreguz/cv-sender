@@ -4,12 +4,12 @@ import LinkedinSearchForm from "../../components/LinkedinSearchForm";
 export default function JobsPage() {
   return (
     <main className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Vagas Disponíveis</h1>
+      <h1 className="text-2xl font-bold">Available Jobs</h1>
 
       <LinkedinSearchForm />
 
       <section>
-        <h2 className="text-lg font-medium">Vagas estáticas (exemplo)</h2>
+        <h2 className="text-lg font-medium">Static jobs (example)</h2>
         <ul className="mt-3 space-y-2">
           <li className="p-4 border rounded-lg shadow">
             <p className="font-semibold">QA Automation Engineer</p>
